@@ -1101,23 +1101,39 @@ function calcInstStatus(parcela) {
     paid: pago, due: devido, remaining: restante };
 }
 
+// Calcula o total pago apenas de parcelas normais (sem origemCaixa)
+function calcInstallmentsStatusSemCaixa(listaParcelas) {
+  const normais = (listaParcelas||[]).filter(p => !p.origemCaixa);
+  return calcInstallmentsStatus(normais);
+}
+
+// Calcula quanto foi pago em parcelas de caixa (para somar no saldo do caixa)
+function calcPagoEmExtrasCaixa(listaParcelas) {
+  return (listaParcelas||[])
+    .filter(p => p.origemCaixa)
+    .reduce((s, p) => {
+      const pags = p.pagamentos || [];
+      return s + pags.reduce((sp, pg) => sp + (pg.valor || 0), 0);
+    }, 0);
+}
+
 function calcGroupTotals(grupo) {
   const { totalFinal } = calcGrupo(grupo);
   const emNucleos = getMembersInFamilies(grupo);
   let totalPago = 0;
 
-  // Membros individuais
+  // Membros individuais — apenas parcelas normais (sem caixa)
   (grupo.members||[]).filter(m=>!emNucleos.has(m.id)).forEach(m => {
-    totalPago += calcInstallmentsStatus(m.installments).totalPaid;
+    totalPago += calcInstallmentsStatusSemCaixa(m.installments).totalPaid;
   });
-  // Núcleos
+  // Núcleos — apenas parcelas normais
   (grupo.families||[]).forEach(f => {
     if (f.mode === 'unique') {
-      totalPago += calcInstallmentsStatus(f.installments).totalPaid;
+      totalPago += calcInstallmentsStatusSemCaixa(f.installments).totalPaid;
     } else {
       (f.memberIds||[]).forEach(mid => {
         const m = (grupo.members||[]).find(x=>x.id===mid);
-        if (m) totalPago += calcInstallmentsStatus(m.installments).totalPaid;
+        if (m) totalPago += calcInstallmentsStatusSemCaixa(m.installments).totalPaid;
       });
     }
   });
@@ -1126,7 +1142,6 @@ function calcGroupTotals(grupo) {
   let status = 'Pendente';
   if (totalPago >= totalFinal && totalFinal > 0) status = 'Pago';
   else if (totalPago > 0) status = 'Parcial';
-  // aliases para retrocompatibilidade
   return { totalFinal, totalPaid: totalPago, totalPago, remaining: restante, restante, pct, status };
 }
 
@@ -1257,16 +1272,18 @@ function formatarContagem(dataEntrada, dataSaida) {
 
 /* ── PAGAMENTO DE PARCELA ── */
 function openModal(id) { document.getElementById(id).classList.add('open'); }
+// Modais que nunca pedem confirmação ao fechar (ação transacional, não cadastro)
+const MODAIS_SEM_CONFIRMACAO = ['modalConfirm', 'modalEditPay', 'modalPay', 'modalEditPagDespesa', 'modalPagDespesa'];
+
 function closeModal(id, forcar) {
-  if (!forcar) {
-    // Verificar se modal tem dados preenchidos
+  if (!forcar && !MODAIS_SEM_CONFIRMACAO.includes(id)) {
+    // Verificar se modal de cadastro tem dados preenchidos
     const modal = document.getElementById(id);
     const inputs = modal ? modal.querySelectorAll('input:not([type=file]):not([type=checkbox]):not([type=date]):not([type=number]), textarea') : [];
     const temDados = [...inputs].some(el => el.value && el.value.trim() !== '' && el.value !== 'R$ 0,00');
-    if (temDados && id !== 'modalConfirm' && id !== 'modalEditPay') {
+    if (temDados) {
       showConfirm('Descartar alterações?', 'Os dados preenchidos serão perdidos. Deseja fechar mesmo assim?', () => {
         document.getElementById(id).classList.remove('open');
-        // Limpar campos após fechar
         inputs.forEach(el => el.value = '');
       });
       return;
@@ -1552,6 +1569,7 @@ function onPayValueInput() {
   if (Math.abs(diferenca) > 0.01 && restante > 0) {
     const abertas = payCtx.installmentList.filter((x,i) => {
       if (i === payCtx.instIdx) return false;
+      if (x.origemCaixa) return false; // não conta parcelas de caixa na redistribuição
       const st = calcInstStatus(x);
       return st.status !== 'Pago' && st.status !== 'Quitado';
     }).length;
@@ -1589,10 +1607,11 @@ function saveInstallmentPayment() {
   const diferenca = v - restante; // positivo = excedente, negativo = pagou menos
 
   if (Math.abs(diferenca) > 0.01) {
-    // Parcelas abertas a partir da próxima
+    // Parcelas abertas a partir da próxima — excluindo parcelas de CAIXA
     const abertas = [];
     for (let i = 0; i < lista.length; i++) {
       if (i === idxAtual) continue;
+      if (lista[i].origemCaixa) continue; // nunca redistribui em parcelas extras de caixa
       const st = calcInstStatus(lista[i]);
       if (st.status !== 'Pago' && st.status !== 'Quitado') abertas.push(i);
     }
@@ -2185,10 +2204,25 @@ function getNextOpenInst(targetType, targetId) {
 /* ── CÁLCULOS CAIXA ── */
 function calcSaldoCaixa(grupo) {
   const movimentos = grupo.caixa || [];
-  return movimentos.reduce((s, m) => {
+  let saldo = movimentos.reduce((s, m) => {
     const val = m.valor || 0;
     return m.tipo === 'entrada' ? s + val : s - val;
   }, 0);
+
+  // Somar pagamentos feitos em parcelas extras de caixa (origemCaixa=true)
+  // Esses pagamentos são receitas do caixa
+  const emNucleos = getMembersInFamilies(grupo);
+  (grupo.members||[]).forEach(m => {
+    saldo += calcPagoEmExtrasCaixa(m.installments);
+  });
+  (grupo.families||[]).forEach(f => {
+    if (f.mode === 'unique') {
+      saldo += calcPagoEmExtrasCaixa(f.installments);
+    }
+    // modo individual: cada membro já foi contado no forEach de members acima
+  });
+
+  return Math.round(saldo * 100) / 100;
 }
 
 /* ── CÁLCULOS DESPESAS ── */
