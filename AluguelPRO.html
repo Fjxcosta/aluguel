@@ -1,0 +1,3132 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AluguelPRO — Controle de Despesas</title>
+<meta name="description" content="Controle de despesas de aluguel compartilhado entre integrantes e núcleos familiares.">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+/* Paleta de referência — valores usados diretamente no CSS abaixo */
+:root {
+  --c-bg:        #0f0f12;
+  --c-surface:   #17171d;
+  --c-surface2:  #1e1e27;
+  --c-surface3:  #252530;
+  --c-border:    #2a2a38;
+  --c-border2:   #33334a;
+  --c-accent:    #c8ff57;
+  --c-accent2:   #a8e044;
+  --c-text:      #f0f0f5;
+  --c-text2:     #9898b0;
+  --c-text3:     #5a5a70;
+  --c-danger:    #ff5757;
+  --c-warn:      #ffb347;
+  --c-success:   #57e5a0;
+  --c-family:    #b57aff;
+  --r-sm:    8px;
+  --r-md:   12px;
+  --r-lg:   18px;
+  --shadow: 0 4px 24px rgba(0,0,0,.4);
+  --ease:   .18s cubic-bezier(.4,0,.2,1);
+}
+html { scroll-behavior: smooth; }
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background-color: #0f0f12;
+  color: #f0f0f5;
+  min-height: 100vh;
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #17171d; }
+::-webkit-scrollbar-thumb { background: #33334a; border-radius: 99px; }
+
+/* ── LAYOUT ── */
+.app-shell { display: flex; min-height: 100vh; }
+.sidebar { width: 280px; min-width: 280px; background: #17171d; border-right: 1px solid #2a2a38; display: flex; flex-direction: column; position: fixed; top: 0; left: 0; bottom: 0; z-index: 100; transition: transform .18s cubic-bezier(.4,0,.2,1); }
+.sidebar-logo { padding: 24px 20px 20px; border-bottom: 1px solid #2a2a38; }
+.logo-mark { font-family: 'Segoe UI', system-ui, sans-serif; font-size: 20px; font-weight: 800; letter-spacing: -.5px; display: flex; align-items: center; gap: 10px; }
+.logo-mark span { background: #c8ff57; color: #0f0f12; border-radius: 6px; padding: 2px 7px; font-size: 11px; font-weight: 700; letter-spacing: 1px; }
+.sidebar-section-title { font-family: 'Segoe UI', system-ui, sans-serif; font-size: 10px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #5a5a70; padding: 16px 20px 8px; }
+.groups-list { flex: 1; overflow-y: auto; padding: 0 12px 12px; }
+.group-item { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 8px; cursor: pointer; transition: background .18s cubic-bezier(.4,0,.2,1); margin-bottom: 2px; }
+.group-item:hover { background: #1e1e27; }
+.group-item.active { background: rgba(200,255,87,.12); }
+.group-item.active .group-name { color: #c8ff57; }
+.group-dot { width: 8px; height: 8px; border-radius: 50%; background: #5a5a70; flex-shrink: 0; }
+.group-item.active .group-dot { background: #c8ff57; }
+.group-name { font-weight: 500; font-size: 14px; color: #9898b0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.btn-add-group { margin: 8px 12px; display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 8px; border: 1px dashed #33334a; background: transparent; color: #5a5a70; cursor: pointer; font-size: 13px; font-family: 'Segoe UI', system-ui, sans-serif; transition: all .18s cubic-bezier(.4,0,.2,1); width: calc(100% - 24px); }
+.btn-add-group:hover { border-color: #c8ff57; color: #c8ff57; background: rgba(200,255,87,.06); }
+.sidebar-footer { padding: 16px 12px; border-top: 1px solid #2a2a38; display: flex; flex-direction: column; gap: 6px; }
+.sidebar-action { display: flex; align-items: center; gap: 8px; padding: 9px 10px; border-radius: 8px; background: transparent; border: none; color: #5a5a70; cursor: pointer; font-size: 13px; font-family: 'Segoe UI', system-ui, sans-serif; transition: all .18s cubic-bezier(.4,0,.2,1); width: 100%; text-align: left; }
+.sidebar-action:hover { background: #1e1e27; color: #9898b0; }
+.sidebar-action.danger:hover { background: rgba(255,87,87,.12); color: #ff5757; }
+.main { margin-left: 280px; flex: 1; display: flex; flex-direction: column; min-height: 100vh; background-color: #0f0f12; }
+.topbar { position: sticky; top: 0; z-index: 50; background: #0f0f12; border-bottom: 1px solid #2a2a38; padding: 0 32px; height: 64px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.topbar-title { font-family: 'Segoe UI', system-ui, sans-serif; font-size: 18px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+.topbar-type-badge { font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; padding: 3px 8px; border-radius: 99px; background: #252530; color: #5a5a70; }
+.topbar-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.mobile-menu-btn { display: none; background: transparent; border: none; color: #9898b0; cursor: pointer; padding: 6px; border-radius: 8px; }
+.content { padding: 24px 32px; max-width: 1300px; }
+
+/* ── EMPTY ── */
+.empty-state {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  min-height: 60vh; gap: 16px; text-align: center;
+  color: #9898b0; /* fallback explícito */
+}
+.empty-icon { font-size: 56px; opacity: .5; }
+.empty-title { font-family: system-ui, sans-serif; font-size: 24px; font-weight: 700; color: #9898b0; }
+.empty-sub { color: #5a5a70; font-size: 14px; max-width: 300px; line-height: 1.7; }
+
+/* ── CARDS ── */
+.card { background: #17171d; border: 1px solid #2a2a38; border-radius: 18px; padding: 28px; margin-bottom: 20px; }
+.card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; gap: 12px; flex-wrap: wrap; }
+.card-title { font-family: 'Segoe UI', system-ui, sans-serif; font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+.card-title-icon { width: 32px; height: 32px; border-radius: 8px; background: rgba(200,255,87,.12); display: flex; align-items: center; justify-content: center; font-size: 13px; }
+.card-title-icon.fam  { background: rgba(181,122,255,.12); }
+.card-title-icon.warn { background: rgba(255,179,71,.12); }
+.card-title-icon.info { background: rgba(87,229,160,.12); }
+
+/* ── STATS ── */
+.stats-row { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; margin-bottom: 24px; }
+.stat-card { background: #17171d; border: 1px solid #2a2a38; border-radius: 14px; padding: 22px 24px; }
+.stat-label { font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #5a5a70; margin-bottom: 10px; }
+.stat-value { font-family: 'Segoe UI', system-ui, sans-serif; font-size: 28px; font-weight: 800; line-height: 1; letter-spacing: -0.5px; }
+.stat-value.accent { color: #c8ff57; }
+.stat-value.success { color: #57e5a0; }
+.stat-value.danger { color: #ff5757; }
+.stat-sub { font-size: 12px; color: #5a5a70; margin-top: 6px; }
+
+/* ── FORM ── */
+.form-grid { display: grid; gap: 14px; }
+.form-grid.cols-2 { grid-template-columns: 1fr 1fr; }
+.form-grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+.form-group { display: flex; flex-direction: column; gap: 6px; }
+.form-label { font-size: 12px; font-weight: 500; color: #5a5a70; letter-spacing: .3px; }
+.form-label .req { color: #ff5757; margin-left: 2px; }
+.form-input, .form-select { background: #1e1e27; border: 1px solid #2a2a38; border-radius: 8px; color: #f0f0f5; font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; padding: 12px 14px; transition: border-color .18s cubic-bezier(.4,0,.2,1), box-shadow .18s cubic-bezier(.4,0,.2,1); outline: none; width: 100%; -webkit-appearance: none; }
+.form-input:focus, .form-select:focus { border-color: #c8ff57; box-shadow: 0 0 0 3px rgba(200,255,87,.12); }
+.form-input::placeholder { color: #5a5a70; }
+.form-select { cursor: pointer; }
+.form-select option { background: #1e1e27; }
+.form-input.small { padding: 7px 10px; font-size: 13px; }
+
+/* ── BUTTONS ── */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 18px; border-radius: 8px; border: none; cursor: pointer; font-size: 14px; font-weight: 500; font-family: 'Segoe UI', system-ui, sans-serif; transition: all .18s cubic-bezier(.4,0,.2,1); white-space: nowrap; }
+.btn-primary { background: #c8ff57; color: #0f0f12; font-weight: 700; }
+.btn-primary:hover { background: #a8e044; transform: translateY(-1px); }
+.btn:focus-visible { outline: 2px solid #c8ff57; outline-offset: 2px; }
+.btn-danger:focus-visible { outline-color: #ff5757; }
+.btn-family:focus-visible { outline-color: #b57aff; }
+.btn-secondary { background: #1e1e27; color: #9898b0; border: 1px solid #2a2a38; }
+.btn-secondary:hover { background: #252530; color: #f0f0f5; }
+.btn-danger { background: rgba(255,87,87,.12); color: #ff5757; border: 1px solid transparent; }
+.btn-danger:hover { background: #ff5757; color: white; }
+.btn-ghost { background: transparent; color: #9898b0; }
+.btn-ghost:hover { background: #1e1e27; color: #f0f0f5; }
+.btn-family { background: rgba(181,122,255,.12); color: #b57aff; border: 1px solid transparent; font-weight: 700; }
+.btn-family:hover { background: #b57aff; color: white; }
+.btn-info { background: rgba(87,184,255,.12); color: #57b8ff; border: 1px solid transparent; font-weight: 600; }
+.btn-info:hover { background: #57b8ff; color: white; }
+.btn-sm { padding: 8px 14px; font-size: 13px; }
+.btn-xs { padding: 4px 8px; font-size: 11px; }
+.btn-icon { padding: 7px; }
+
+/* ── MEMBER CARD ── */
+.members-grid { display: flex; flex-direction: column; gap: 12px; }
+.member-card { background: #1e1e27; border: 1px solid #2a2a38; border-radius: 12px; overflow: hidden; transition: border-color .18s cubic-bezier(.4,0,.2,1); }
+.member-card:hover { border-color: #33334a; }
+.member-card.is-family { border-color: rgba(181,122,255,.25); background: rgba(181,122,255,.03); }
+.member-header { display: flex; align-items: center; gap: 12px; padding: 14px 16px; cursor: pointer; user-select: none; }
+.member-avatar { width: 36px; height: 36px; border-radius: 50%; background: rgba(200,255,87,.12); display: flex; align-items: center; justify-content: center; font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; font-weight: 700; color: #c8ff57; flex-shrink: 0; }
+.member-avatar.fam { background: rgba(181,122,255,.12); color: #b57aff; }
+.member-info { flex: 1; min-width: 0; }
+.member-name { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 8px; }
+.member-meta { font-size: 12px; color: #5a5a70; margin-top: 2px; }
+.pill { padding: 3px 10px; border-radius: 99px; font-size: 11px; font-weight: 700; letter-spacing: .5px; flex-shrink: 0; }
+.pill-paid { background: rgba(87,229,160,.12); color: #57e5a0; }
+.pill-partial { background: rgba(255,179,71,.12); color: #ffb347; }
+.pill-pending { background: rgba(255,87,87,.12); color: #ff5757; }
+.pill-family { background: rgba(181,122,255,.12); color: #b57aff; font-size: 10px; letter-spacing: 1px; text-transform: uppercase; }
+.member-actions { display: flex; gap: 4px; flex-shrink: 0; flex-wrap: wrap; }
+.member-body { border-top: 1px solid #2a2a38; padding: 16px; display: none; }
+.member-body.open { display: block; }
+
+/* ── PROGRESS ── */
+.progress-wrap { background: #252530; border-radius: 99px; height: 4px; overflow: hidden; margin-top: 6px; }
+.progress-bar { height: 100%; border-radius: 99px; background: #c8ff57; transition: width .4s ease; }
+.progress-bar.s { background: #57e5a0; }
+.progress-bar.p { background: #ffb347; }
+.progress-bar.d { background: #ff5757; }
+
+/* ── SUMMARY BOXES ── */
+.summary-boxes { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; margin-bottom: 16px; }
+.sum-box { background: #17171d; border: 1px solid #2a2a38; border-radius: 8px; padding: 10px 12px; }
+.sum-box-label { font-size: 10px; color: #5a5a70; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 4px; }
+.sum-box-value { font-family: 'Segoe UI', system-ui, sans-serif; font-size: 15px; font-weight: 700; }
+.sum-box-value.s { color: #57e5a0; }
+.sum-box-value.d { color: #ff5757; }
+.sum-box-value.w { color: #ffb347; }
+.sum-box-value.a { color: #c8ff57; }
+
+/* ── INSTALLMENT ROWS ── */
+.installment-list { display: flex; flex-direction: column; gap: 8px; }
+.inst-overdue { border-color: rgba(255,87,87,.4) !important; }
+.inst-overdue .inst-header { background: rgba(255,87,87,.04); }
+.overdue-badge { display: inline-block; font-size: 9px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; background: rgba(255,87,87,.15); color: #ff5757; border-radius: 4px; padding: 1px 5px; margin-left: 6px; vertical-align: middle; }
+.inst-row { background: #17171d; border: 1px solid #2a2a38; border-radius: 8px; overflow: hidden; }
+.inst-header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; cursor: pointer; user-select: none; flex-wrap: wrap; }
+.inst-number { font-family: 'Segoe UI', system-ui, sans-serif; font-size: 12px; font-weight: 700; color: #5a5a70; min-width: 56px; }
+.inst-date { font-size: 12px; color: #9898b0; flex: 1; }
+.inst-values { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+.inst-val { font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; font-weight: 700; }
+.inst-val.full { color: #f0f0f5; }
+.inst-val.due { color: #ff5757; font-size: 12px; }
+.inst-body { border-top: 1px solid #2a2a38; padding: 12px 14px; display: none; background: #1e1e27; }
+.inst-body.open { display: block; }
+.payment-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid #2a2a38; }
+.payment-row:last-of-type { border-bottom: none; }
+.payment-row-info { flex: 1; }
+.payment-row-val { font-weight: 600; font-size: 13px; }
+.payment-row-date { font-size: 11px; color: #5a5a70; margin-top: 2px; }
+.thumb { width: 28px; height: 28px; border-radius: 5px; object-fit: cover; cursor: pointer; border: 1px solid #2a2a38; }
+.file-icon { width: 28px; height: 28px; border-radius: 5px; background: #252530; display: flex; align-items: center; justify-content: center; font-size: 12px; border: 1px solid #2a2a38; }
+
+/* ── DATE EDITOR ── */
+.date-edit-wrap { display: inline-flex; align-items: center; gap: 6px; }
+.date-edit-input { background: #1e1e27; border: 1px solid #2a2a38; border-radius: 4px; color: #9898b0; font-size: 12px; font-family: 'Segoe UI', system-ui, sans-serif; padding: 4px 6px; outline: none; width: 130px; transition: border-color .18s cubic-bezier(.4,0,.2,1); }
+.date-edit-input:focus { border-color: #c8ff57; color: #f0f0f5; }
+
+/* ── FILE UPLOAD ── */
+.file-upload-area { border: 1px dashed #33334a; border-radius: 8px; padding: 14px; text-align: center; cursor: pointer; transition: all .18s cubic-bezier(.4,0,.2,1); position: relative; }
+.file-upload-area:hover { border-color: #c8ff57; background: rgba(200,255,87,.06); }
+.file-upload-area input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+.file-upload-text { color: #5a5a70; font-size: 12px; }
+.file-preview-wrap { margin-top: 10px; position: relative; display: inline-block; }
+.file-preview-img { max-height: 90px; border-radius: 8px; border: 1px solid #2a2a38; display: block; }
+.file-preview-name { background: #252530; border: 1px solid #2a2a38; border-radius: 6px; padding: 6px 10px; font-size: 12px; color: #9898b0; display: flex; align-items: center; gap: 6px; }
+.btn-remove-file { position: absolute; top: -6px; right: -6px; width: 18px; height: 18px; border-radius: 50%; background: #ff5757; color: white; border: none; cursor: pointer; font-size: 10px; display: flex; align-items: center; justify-content: center; }
+
+/* ── MODAL ── */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.7); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px; opacity: 0; pointer-events: none; visibility: hidden; transition: opacity .22s cubic-bezier(.4,0,.2,1), visibility .22s; }
+.modal-overlay.open { opacity: 1; pointer-events: all; visibility: visible; }
+.modal { background: #17171d; border: 1px solid #33334a; border-radius: 18px; width: 100%; max-width: 500px; max-height: 90vh; overflow-y: auto; box-shadow: 0 4px 24px rgba(0,0,0,.4); transform: scale(.96) translateY(8px); transition: transform .18s cubic-bezier(.4,0,.2,1); will-change: transform; }
+.modal-overlay.open .modal { transform: scale(1) translateY(0); }
+.modal-header { padding: 20px 24px 16px; border-bottom: 1px solid #2a2a38; display: flex; align-items: center; justify-content: space-between; }
+.modal-title { font-family: 'Segoe UI', system-ui, sans-serif; font-size: 16px; font-weight: 700; }
+.modal-body { padding: 20px 24px; }
+.modal-footer { padding: 16px 24px; border-top: 1px solid #2a2a38; display: flex; justify-content: flex-end; gap: 8px; align-items: center; }
+.modal-footer-left { margin-right: auto; }
+
+/* ── MEMBER SELECT ── */
+.member-select-list { display: flex; flex-direction: column; gap: 4px; max-height: 200px; overflow-y: auto; border: 1px solid #2a2a38; border-radius: 8px; padding: 8px; background: #1e1e27; }
+.member-select-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 6px; cursor: pointer; transition: background .18s cubic-bezier(.4,0,.2,1); }
+.member-select-item:hover { background: #252530; }
+.member-select-item input[type="checkbox"] { accent-color: #c8ff57; width: 15px; height: 15px; cursor: pointer; flex-shrink: 0; }
+.member-select-item.dis { opacity: .5; pointer-events: none; }
+
+/* ── SURPLUS INFO ── */
+.surplus-info { background: rgba(87,184,255,.12); border: 1px solid rgba(87,184,255,.2); border-radius: 8px; padding: 10px 14px; font-size: 12px; color: #57b8ff; display: none; margin-top: 10px; line-height: 1.6; }
+.surplus-info.show { display: block; }
+
+/* ── HISTORY TABLE ── */
+.history-table { width: 100%; border-collapse: collapse; }
+.history-table th { font-size: 11px; font-weight: 600; letter-spacing: .5px; text-transform: uppercase; color: #5a5a70; padding: 8px 12px; text-align: left; border-bottom: 1px solid #2a2a38; }
+.history-table td { padding: 10px 12px; border-bottom: 1px solid #2a2a38; font-size: 13px; color: #9898b0; }
+.history-table tr:last-child td { border-bottom: none; }
+.history-table tr:hover td { background: #1e1e27; }
+
+/* ── TOAST ── */
+.toast-container { position: fixed; bottom: 24px; right: 24px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+.toast { background: #17171d; border: 1px solid #33334a; border-radius: 12px; padding: 12px 16px; font-size: 13px; box-shadow: 0 4px 24px rgba(0,0,0,.4); display: flex; align-items: center; gap: 10px; min-width: 240px; max-width: 340px; animation: toastIn .3s ease; transition: opacity .3s, transform .3s; }
+.toast.out { opacity: 0; transform: translateX(20px); }
+.toast.success { border-color: #57e5a0; }
+.toast.success .ti { color: #57e5a0; }
+.toast.error { border-color: #ff5757; }
+.toast.error .ti { color: #ff5757; }
+.toast.warn { border-color: #ffb347; }
+.toast.warn .ti { color: #ffb347; }
+.toast.info { border-color: #57b8ff; }
+.toast.info .ti { color: #57b8ff; }
+.ti { font-size: 16px; flex-shrink: 0; }
+@keyframes toastIn { from { opacity:0; transform:translateX(20px); } to { opacity:1; transform:translateX(0); } }
+
+/* ── IMAGE VIEWER ── */
+.img-viewer { position: fixed; inset: 0; background: rgba(0,0,0,.92); z-index: 2000; display: flex; align-items: center; justify-content: center; padding: 20px; cursor: zoom-out; opacity: 0; pointer-events: none; visibility: hidden; transition: opacity .2s ease, visibility .2s; }
+.img-viewer.open { opacity: 1; pointer-events: all; visibility: visible; }
+.img-viewer img { max-width: 90vw; max-height: 90vh; border-radius: 12px; box-shadow: 0 4px 24px rgba(0,0,0,.4); }
+.img-viewer-close { position: absolute; top: 20px; right: 20px; background: #17171d; border: 1px solid #2a2a38; color: #f0f0f5; width: 36px; height: 36px; border-radius: 50%; cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center; }
+
+/* ── SIDEBAR OVERLAY ── */
+.sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 99; }
+
+/* ── RESPONSIVE ── */
+@media (max-width: 768px) {
+  .sidebar { transform: translateX(-100%); }
+  .sidebar.mobile-open { transform: translateX(0); box-shadow: 0 4px 24px rgba(0,0,0,.4); }
+  .sidebar-overlay.active { display: block; }
+  .main { margin-left: 0; }
+  .mobile-menu-btn { display: flex; }
+  .content { padding: 20px 16px; }
+  .stats-row { grid-template-columns: 1fr 1fr; }
+  .summary-boxes { grid-template-columns: 1fr 1fr; }
+  .form-grid.cols-2, .form-grid.cols-3 { grid-template-columns: 1fr; }
+  .topbar { padding: 0 16px; }
+  .topbar-title { font-size: 15px; }
+  .topbar-actions .btn-sm { padding: 6px 10px; font-size: 12px; }
+  /* Dashboard 3-col vira 2-col em tablet, 1-col em mobile */
+  [style*="grid-template-columns:repeat(3,1fr)"] { grid-template-columns: 1fr 1fr !important; }
+}
+@media (max-width: 480px) {
+  .stats-row, .summary-boxes { grid-template-columns: 1fr; }
+  [style*="grid-template-columns:repeat(3,1fr)"] { grid-template-columns: 1fr !important; }
+}
+
+/* ── DESPESAS & CAIXA ── */
+.despesa-item { background: #1e1e27; border: 1px solid #2a2a38; border-radius: 12px; overflow: hidden; margin-bottom: 8px; transition: border-color .18s cubic-bezier(.4,0,.2,1); }
+.despesa-item:hover { border-color: #33334a; }
+.despesa-header { display: flex; align-items: center; gap: 12px; padding: 12px 16px; cursor: pointer; user-select: none; }
+.despesa-icon { width: 34px; height: 34px; border-radius: 8px; background: rgba(255,179,71,.12); display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
+.despesa-info { flex: 1; min-width: 0; }
+.despesa-nome { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.despesa-meta { font-size: 12px; color: #5a5a70; margin-top: 2px; }
+.despesa-valor { font-family: 'Segoe UI', system-ui, sans-serif; font-size: 16px; font-weight: 700; color: #ffb347; flex-shrink: 0; }
+.despesa-body { border-top: 1px solid #2a2a38; padding: 14px 16px; display: none; }
+.despesa-body.open { display: block; }
+.rateio-lista { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.rateio-item { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: #17171d; border: 1px solid #2a2a38; border-radius: 8px; }
+.rateio-nome { flex: 1; font-size: 13px; color: #9898b0; }
+.rateio-valor { font-family: 'Segoe UI', system-ui, sans-serif; font-size: 13px; font-weight: 700; }
+.caixa-saldo-box { display: flex; align-items: center; gap: 16px; padding: 16px 20px; background: #1e1e27; border: 1px solid #2a2a38; border-radius: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+.caixa-saldo-valor { font-family: 'Segoe UI', system-ui, sans-serif; font-size: 28px; font-weight: 800; }
+.caixa-movim-lista { display: flex; flex-direction: column; gap: 6px; }
+.caixa-movim-item { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: #1e1e27; border: 1px solid #2a2a38; border-radius: 8px; }
+.caixa-movim-info { flex: 1; }
+.caixa-movim-desc { font-size: 13px; color: #9898b0; font-weight: 500; }
+.caixa-movim-data { font-size: 11px; color: #5a5a70; margin-top: 1px; }
+.caixa-movim-valor { font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; font-weight: 700; }
+.caixa-movim-valor.entrada { color: #57e5a0; }
+.caixa-movim-valor.saida { color: #ff5757; }
+
+.text-s { color: #57e5a0; }
+.text-d { color: #ff5757; }
+.text-w { color: #ffb347; }
+.text-a { color: #c8ff57; }
+.text-m { color: #5a5a70; }
+.fw7 { font-weight: 700; }
+.fs12 { font-size: 12px; }
+.divider { border: none; border-top: 1px solid #2a2a38; margin: 16px 0; }
+.hidden { display: none !important; }
+
+/* ── IMPRESSÃO / PDF ── */
+#printArea { display: none; }
+@media print {
+  body > *:not(#printArea) { display: none !important; }
+  #printArea {
+    display: block !important;
+    font-family: 'Segoe UI', sans-serif;
+    font-size: 12px;
+    color: #111;
+    background: white;
+    padding: 20mm;
+    max-width: 100%;
+  }
+  #printArea h1 { font-size: 20px; font-weight: 800; margin-bottom: 4px; }
+  #printArea h2 { font-size: 14px; font-weight: 700; margin: 16px 0 8px; padding: 6px 10px; background: #1e1e27; color: #c8ff57; border-radius: 4px; page-break-after: avoid; }
+  #printArea h3 { font-size: 13px; font-weight: 700; margin: 12px 0 6px; }
+  #printArea p, #printArea li { line-height: 1.6; margin-bottom: 3px; }
+  #printArea table { width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 11px; }
+  #printArea th { background: #f0f0f0; font-weight: 700; text-align: left; padding: 5px 8px; border: 1px solid #ccc; }
+  #printArea td { padding: 5px 8px; border: 1px solid #ddd; }
+  #printArea tr:nth-child(even) td { background: #fafafa; }
+  #printArea .print-badge { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 10px; font-weight: 700; }
+  #printArea .print-badge.pago { background: #d4f8e8; color: #1a7a4a; }
+  #printArea .print-badge.parcial { background: #fff3cd; color: #856404; }
+  #printArea .print-badge.pendente { background: #fde8e8; color: #9b1c1c; }
+  #printArea img { max-width: 120px; max-height: 80px; object-fit: contain; border: 1px solid #ddd; border-radius: 4px; }
+  #printArea .print-img-wrap { margin: 6px 0; }
+  #printArea .print-section { margin-bottom: 20px; page-break-inside: avoid; }
+  #printArea .print-row { display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid #f0f0f0; }
+  #printArea .print-row strong { font-weight: 700; }
+  #printArea .no-print { display: none; }
+  @page { margin: 15mm; }
+}
+</style>
+</head>
+<body>
+
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="closeMobileSidebar()"></div>
+<div class="app-shell">
+  <!-- SIDEBAR -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-mark">🏠 AluguelPRO <span>PRO</span></div>
+    </div>
+    <div class="sidebar-section-title">Grupos</div>
+    <div class="groups-list" id="groupsList"></div>
+    <div style="height:1px;background:#2a2a38;margin:4px 12px;"></div>
+    <button type="button" class="btn-add-group" onclick="openGroupModal()">+ Novo Grupo</button>
+    <div class="sidebar-footer">
+      <button type="button" class="sidebar-action" onclick="exportJSON()">📤 Exportar JSON</button>
+      <label class="sidebar-action" style="cursor:pointer;">📥 Importar JSON
+        <input type="file" accept=".json" style="display:none" onchange="importJSON(event)">
+      </label>
+      <button type="button" class="sidebar-action danger" onclick="confirmClearAll()">🗑 Limpar Tudo</button>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+    <div class="topbar">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <button class="mobile-menu-btn" onclick="toggleMobileSidebar()">
+          <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
+        </button>
+        <div class="topbar-title" id="topbarTitle">Selecione um grupo</div>
+      </div>
+      <div class="topbar-actions" id="topbarActions"></div>
+    </div>
+    <div class="content" id="mainContent">
+      <div class="empty-state" id="emptyState">
+        <div class="empty-icon">🏠</div>
+        <div class="empty-title">Nenhum grupo selecionado</div>
+        <div class="empty-sub">Crie um grupo para começar a gerenciar as despesas de aluguel.</div>
+        <button class="btn btn-primary" onclick="openGroupModal()">+ Criar Grupo</button>
+      </div>
+      <div id="groupContent" class="hidden"></div>
+    </div>
+  </main>
+</div>
+
+<div id="printArea"></div>
+
+<div class="toast-container" id="toastContainer"></div>
+<div class="img-viewer" id="imgViewer" onclick="if(event.target===this)closeImgViewer()">
+  <button class="img-viewer-close" onclick="closeImgViewer()">✕</button>
+  <img id="imgViewerSrc" src="" alt="">
+</div>
+
+<!-- ══════════ MODAIS ══════════ -->
+
+<!-- Grupo -->
+<div class="modal-overlay" id="modalGroup">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="modalGroupTitle">Novo Grupo</div>
+      <button class="btn btn-ghost btn-icon" onclick="closeModal('modalGroup', true)">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="form-label">Nome <span class="req">*</span></label>
+          <input class="form-input" id="inputGroupName" placeholder="Ex: Casa Principal">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Tipo</label>
+          <select class="form-select" id="inputGroupType">
+            <option value="Familiar">Familiar</option>
+            <option value="Profissional">Profissional</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modalGroup', true)">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveGroup()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Aluguel -->
+<div class="modal-overlay" id="modalRental">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-header">
+      <div class="modal-title">Dados do Aluguel</div>
+      <button class="btn btn-ghost btn-icon" onclick="closeModal('modalRental', true)">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid cols-2">
+        <div class="form-group">
+          <label class="form-label">Valor do Aluguel <span class="req">*</span></label>
+          <input class="form-input" id="inputRentalValue" placeholder="R$ 0,00" type="text" inputmode="numeric" autocomplete="off" oninput="applyBRLMask(this)">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Patrocínio / Desconto</label>
+          <input class="form-input" id="inputSponsor" placeholder="R$ 0,00" type="text" inputmode="numeric" autocomplete="off" oninput="applyBRLMask(this)">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Nº de Parcelas <span class="req">*</span></label>
+          <input class="form-input" id="inputInstallments" type="number" min="1" max="60" value="1">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Referência (Mês/Ano)</label>
+          <input class="form-input" id="inputRefDate" type="month">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Dia de Vencimento</label>
+          <input class="form-input" id="inputDueDay" type="number" min="1" max="31" placeholder="Ex: 5">
+        </div>
+        <div class="form-group">
+          <label class="form-label">URL da Casa</label>
+          <input class="form-input" id="inputHouseURL" placeholder="https://..." type="url">
+        </div>
+        <div class="form-group" style="grid-column:1/-1;">
+          <label class="form-label">Endereço da Casa</label>
+          <input class="form-input" id="inputAddress" placeholder="Rua, número, bairro, cidade...">
+        </div>
+        <div class="form-group">
+          <label class="form-label">📅 Data de Entrada na Casa</label>
+          <input class="form-input" id="inputEntryDate" type="date">
+        </div>
+        <div class="form-group">
+          <label class="form-label">📅 Data de Saída / Término</label>
+          <input class="form-input" id="inputExitDate" type="date">
+        </div>
+        <div class="form-group" style="grid-column:1/-1;">
+          <label class="form-label" for="inputNotes">Observações</label>
+          <textarea class="form-input" id="inputNotes" placeholder="Anotações gerais sobre o aluguel..." rows="3" style="resize:vertical;"></textarea>
+        </div>
+        <div class="form-group" style="grid-column:1/-1;">
+          <label class="form-label">Contrato da Casa</label>
+          <div class="file-upload-area">
+            <input type="file" id="fileGeneral" accept="image/*,application/pdf" onchange="handleFile('fileGeneral','previewGeneral')">
+            <div class="file-upload-text">📎 Clique para anexar o contrato</div>
+          </div>
+          <div id="previewGeneral"></div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modalRental', true)">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveRentalData()">Salvar & Gerar Parcelas</button>
+    </div>
+  </div>
+</div>
+
+<!-- Integrante -->
+<div class="modal-overlay" id="modalMember">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="modalMemberTitle">Novo Integrante</div>
+      <button class="btn btn-ghost btn-icon" onclick="closeModal('modalMember', true)">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Nome <span class="req">*</span></label>
+        <input class="form-input" id="inputMemberName" placeholder="Nome completo">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modalMember', true)">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveMember()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Núcleo Familiar -->
+<div class="modal-overlay" id="modalFamily">
+  <div class="modal" style="max-width:540px;">
+    <div class="modal-header">
+      <div class="modal-title" id="modalFamilyTitle">Novo Núcleo Familiar</div>
+      <button class="btn btn-ghost btn-icon" onclick="closeModal('modalFamily', true)">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="form-label">Nome do Núcleo <span class="req">*</span></label>
+          <input class="form-input" id="inputFamilyName" placeholder="Ex: Família Silva">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Modo de Pagamento</label>
+          <select class="form-select" id="inputFamilyMode">
+            <option value="unique">Pagamento único pelo núcleo (cota × membros)</option>
+            <option value="individual">Cada membro paga individualmente</option>
+          </select>
+        </div>
+        <div class="form-group" style="grid-column:1/-1;">
+          <label class="form-label">Membros do Núcleo</label>
+          <div style="font-size:11px;color:#5a5a70;margin-bottom:6px;">Integrantes já em outro núcleo aparecem desabilitados.</div>
+          <div class="member-select-list" id="familyMemberSelect"></div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modalFamily', true)">Cancelar</button>
+      <button class="btn btn-family" onclick="saveFamily()">💜 Salvar Núcleo</button>
+    </div>
+  </div>
+</div>
+
+<!-- Pagamento de Parcela -->
+<div class="modal-overlay" id="modalPay">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="modalPayTitle">Registrar Pagamento</div>
+      <button class="btn btn-ghost btn-icon" onclick="closeModal('modalPay', true)">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="payInfo" style="margin-bottom:14px;padding:12px;background:#1e1e27;border-radius:8px;font-size:13px;color:#9898b0;line-height:1.8;"></div>
+      <div class="form-grid cols-2">
+        <div class="form-group">
+          <label class="form-label">Valor Pago <span class="req">*</span></label>
+          <input class="form-input" id="inputPayValue" placeholder="R$ 0,00" type="text" inputmode="numeric" oninput="applyBRLMask(this);onPayValueInput()">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Data do Pagamento</label>
+          <input class="form-input" id="inputPayDate" type="date">
+        </div>
+        <div class="form-group" style="grid-column:1/-1;">
+          <label class="form-label">Comprovante</label>
+          <div class="file-upload-area">
+            <input type="file" id="filePay" accept="image/*,application/pdf" onchange="handleFile('filePay','previewPay')">
+            <div class="file-upload-text">📎 Clique para anexar</div>
+          </div>
+          <div id="previewPay"></div>
+        </div>
+      </div>
+      <div class="surplus-info" id="surplusInfo"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modalPay', true)">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveInstallmentPayment()">Registrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Editar Pagamento -->
+<div class="modal-overlay" id="modalEditPay">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Editar Pagamento</div>
+      <button class="btn btn-ghost btn-icon" onclick="closeModal('modalEditPay', true)">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="editPayInfo" style="margin-bottom:14px;padding:12px;background:#1e1e27;border-radius:8px;font-size:13px;color:#9898b0;line-height:1.8;"></div>
+      <div class="form-grid cols-2">
+        <div class="form-group">
+          <label class="form-label">Valor Pago <span class="req">*</span></label>
+          <input class="form-input" id="inputEditPayValue" placeholder="R$ 0,00" type="text" inputmode="numeric" oninput="applyBRLMask(this)">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Data</label>
+          <input class="form-input" id="inputEditPayDate" type="date">
+        </div>
+        <div class="form-group" style="grid-column:1/-1;">
+          <label class="form-label">Comprovante</label>
+          <div class="file-upload-area">
+            <input type="file" id="fileEditPay" accept="image/*,application/pdf" onchange="handleFile('fileEditPay','previewEditPay')">
+            <div class="file-upload-text">📎 Clique para substituir</div>
+          </div>
+          <div id="previewEditPay"></div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-danger modal-footer-left" onclick="confirmDeletePaymentFromEdit()">🗑 Excluir</button>
+      <button class="btn btn-secondary" onclick="closeModal('modalEditPay', true)">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveEditPayment()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Nova/Editar Despesa -->
+<div class="modal-overlay" id="modalDespesa">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-header">
+      <div class="modal-title" id="modalDespesaTitulo">Nova Despesa</div>
+      <button class="btn btn-ghost btn-icon" onclick="closeModal('modalDespesa', true)">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid cols-2">
+        <div class="form-group" style="grid-column:1/-1;">
+          <label class="form-label">Descrição <span class="req">*</span></label>
+          <input class="form-input" id="inputDespesaNome" placeholder="Ex: Conta de luz, Internet, Gás...">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Valor Total <span class="req">*</span></label>
+          <input class="form-input" id="inputDespesaValor" placeholder="R$ 0,00" type="text" inputmode="numeric" autocomplete="off" oninput="applyBRLMask(this);atualizarPreviewRateio()">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Data</label>
+          <input class="form-input" id="inputDespesaData" type="date">
+        </div>
+        <div class="form-group" style="grid-column:1/-1;">
+          <label class="form-label">Observação</label>
+          <input class="form-input" id="inputDespesaObs" placeholder="Opcional...">
+        </div>
+        <div class="form-group" style="grid-column:1/-1;">
+          <label class="form-label">Rateio por integrante</label>
+          <div id="previewRateio" style="margin-top:6px;padding:10px 14px;background:#1e1e27;border:1px solid #2a2a38;border-radius:8px;font-size:13px;color:#9898b0;">Informe o valor para calcular o rateio</div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modalDespesa', true)">Cancelar</button>
+      <button class="btn btn-primary" onclick="salvarDespesa()">Salvar Despesa</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Movimentação de Caixa -->
+<div class="modal-overlay" id="modalCaixa">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="modalCaixaTitulo">Movimentação de Caixa</div>
+      <button class="btn btn-ghost btn-icon" onclick="closeModal('modalCaixa', true)">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid cols-2">
+        <div class="form-group">
+          <label class="form-label">Tipo</label>
+          <select class="form-select" id="inputCaixaTipo">
+            <option value="entrada">💰 Entrada</option>
+            <option value="saida">💸 Saída</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Valor <span class="req">*</span></label>
+          <input class="form-input" id="inputCaixaValor" placeholder="R$ 0,00" type="text" inputmode="numeric" oninput="applyBRLMask(this)">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Data</label>
+          <input class="form-input" id="inputCaixaData" type="date">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Descrição</label>
+          <input class="form-input" id="inputCaixaDesc" placeholder="Ex: Contribuição mensal, Compras...">
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modalCaixa', true)">Cancelar</button>
+      <button class="btn btn-primary" onclick="salvarMovimentoCaixa()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Pagar Despesa (por integrante) -->
+<div class="modal-overlay" id="modalPagDespesa">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Registrar Pagamento</div>
+      <button class="btn btn-ghost btn-icon" onclick="closeModal('modalPagDespesa', true)">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="infoPagDespesa" style="margin-bottom:14px;padding:12px;background:#1e1e27;border-radius:8px;font-size:13px;color:#9898b0;line-height:1.8;"></div>
+      <div class="form-grid cols-2">
+        <div class="form-group">
+          <label class="form-label">Valor Pago <span class="req">*</span></label>
+          <input class="form-input" id="inputPagDespesaValor" placeholder="R$ 0,00" type="text" inputmode="numeric" oninput="applyBRLMask(this)">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Data</label>
+          <input class="form-input" id="inputPagDespesaData" type="date">
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modalPagDespesa', true)">Cancelar</button>
+      <button class="btn btn-primary" onclick="salvarPagamentoDespesa()">Registrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Editar Pagamento de Despesa -->
+<div class="modal-overlay" id="modalEditPagDespesa">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Editar Pagamento de Despesa</div>
+      <button type="button" class="btn btn-ghost btn-icon" onclick="closeModal('modalEditPagDespesa', true)">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="infoEditPagDespesa" style="margin-bottom:14px;padding:12px;background:#1e1e27;border-radius:8px;font-size:13px;color:#9898b0;line-height:1.8;"></div>
+      <div class="form-grid cols-2">
+        <div class="form-group">
+          <label class="form-label" for="inputEditPagDespesaValor">Valor Pago <span class="req">*</span></label>
+          <input class="form-input" id="inputEditPagDespesaValor" placeholder="R$ 0,00" type="text" inputmode="numeric" oninput="applyBRLMask(this)">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="inputEditPagDespesaData">Data</label>
+          <input class="form-input" id="inputEditPagDespesaData" type="date">
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-danger" style="margin-right:auto;" onclick="excluirPagamentoDespesaEdit()">🗑 Excluir</button>
+      <button type="button" class="btn btn-secondary" onclick="closeModal('modalEditPagDespesa', true)">Cancelar</button>
+      <button type="button" class="btn btn-primary" onclick="salvarEdicaoPagDespesa()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Ratear valor do Caixa entre integrantes -->
+<div class="modal-overlay" id="modalRatearCaixa">
+  <div class="modal" style="max-width:500px;">
+    <div class="modal-header">
+      <div class="modal-title">💰 Ratear do Caixa</div>
+      <button type="button" class="btn btn-ghost btn-icon" onclick="closeModal('modalRatearCaixa', true)">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="padding:10px 14px;background:#1e1e27;border-radius:8px;font-size:13px;color:#9898b0;margin-bottom:16px;line-height:1.7;">
+        Informe o valor por integrante. Serão geradas parcelas extras no parcelamento de cada um, identificadas como <strong style="color:#57e5a0;">CAIXA</strong>. Os integrantes pagam ao caixa.
+      </div>
+      <div class="form-grid cols-2">
+        <div class="form-group">
+          <label class="form-label" for="inputRatearPorPessoa">Valor por integrante <span class="req">*</span></label>
+          <input class="form-input" id="inputRatearPorPessoa" placeholder="R$ 0,00" type="text" inputmode="numeric" autocomplete="off" oninput="applyBRLMask(this);calcularTotalRatear()">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="inputRatearValor">Valor Total (calculado)</label>
+          <input class="form-input" id="inputRatearValor" placeholder="R$ 0,00" type="text" inputmode="numeric" autocomplete="off" readonly style="opacity:.7;cursor:not-allowed;">
+        </div>
+        <div class="form-group" style="grid-column:1/-1;">
+          <label class="form-label" for="inputRatearData">Data de Vencimento</label>
+          <input class="form-input" id="inputRatearData" type="date">
+        </div>
+        <div class="form-group" style="grid-column:1/-1;">
+          <label class="form-label" for="inputRatearDesc">Descrição <span class="req">*</span></label>
+          <input class="form-input" id="inputRatearDesc" placeholder="Ex: Manutenção, Conta extra...">
+        </div>
+        <div class="form-group" style="grid-column:1/-1;">
+          <label class="form-label">Recorrência</label>
+          <div style="display:flex;gap:8px;">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#9898b0;">
+              <input type="radio" name="ratearRecorrencia" value="avulso" id="ratearAvulso" checked onchange="atualizarPreviewRatearCaixa()"> Uma vez
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#9898b0;">
+              <input type="radio" name="ratearRecorrencia" value="recorrente" id="ratearRecorrente" onchange="atualizarPreviewRatearCaixa()"> Recorrente
+            </label>
+          </div>
+        </div>
+        <div class="form-group" id="ratearMesesWrap" style="grid-column:1/-1;display:none;">
+          <label class="form-label" for="inputRatearMeses">Quantos meses? <span class="req">*</span></label>
+          <input class="form-input" id="inputRatearMeses" type="number" min="2" max="60" value="3" oninput="atualizarPreviewRatearCaixa()">
+        </div>
+      </div>
+      <div id="previewRatearCaixa" style="margin-top:14px;padding:12px 14px;background:#1e1e27;border:1px solid #2a2a38;border-radius:8px;font-size:13px;color:#9898b0;">
+        Informe o valor para ver o rateio
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-secondary" onclick="closeModal('modalRatearCaixa', true)">Cancelar</button>
+      <button type="button" class="btn btn-primary" onclick="salvarRatearCaixa()">✓ Gerar Parcelas</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modalConfirm">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="confirmTitle">Confirmar</div>
+      <button class="btn btn-ghost btn-icon" onclick="closeModal('modalConfirm', true)">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="color:#9898b0;font-size:14px;" id="confirmMessage"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modalConfirm', true)">Cancelar</button>
+      <button class="btn btn-danger" id="confirmBtn">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ══════════════════════════════════════════════════════════
+   ESTADO
+   group: { id, name, type, rental:{}, members:[], families:[] }
+   member: { id, name, installments:[ {due,amountDue,payments:[]} ] }
+   family (mode=unique): { id, name, memberIds:[], mode:'unique', installments:[] }
+   family (mode=individual): { id, name, memberIds:[], mode:'individual' }
+     → cada member tem seus próprios installments
+══════════════════════════════════════════════════════════ */
+let state = { groups: [], activeGroup: null };
+let tmpFiles = {};
+let editingGroupId = null, editingMemberId = null, editingFamilyId = null;
+let payCtx = null;   // { targetType:'member'|'family', targetId, instIdx }
+let confirmCb = null;
+
+/* ── PERSISTÊNCIA com localStorage ── */
+const STORE_KEY = 'aluguelPRO_v4';
+
+// Wrapper seguro — funciona mesmo com file:// bloqueado
+const _store = (() => {
+  try {
+    // Testa se localStorage está disponível e gravável
+    const t = '__test__';
+    window.localStorage.setItem(t, t);
+    window.localStorage.removeItem(t);
+    return window.localStorage;
+  } catch(e) {
+    // Fallback: storage em memória (dados ficam enquanto a aba estiver aberta)
+    const mem = {};
+    return {
+      getItem:    (k)    => mem[k] ?? null,
+      setItem:    (k, v) => { mem[k] = String(v); },
+      removeItem: (k)    => { delete mem[k]; }
+    };
+  }
+})();
+
+function save() {
+  try {
+    // Salva em partes se necessário (comprovantes base64 são grandes)
+    const json = JSON.stringify(state);
+    _store.setItem(STORE_KEY, json);
+  } catch(e) {
+    // QuotaExceededError — dados demais (provavelmente comprovantes)
+    // Salva sem os arquivos base64 para não perder os dados numéricos
+    try {
+      const semArquivos = JSON.parse(JSON.stringify(state));
+      semArquivos.groups.forEach(g => {
+        if (g.rental) { delete g.rental.contratoArquivo; delete g.rental.generalFile; }
+        (g.members||[]).forEach(m => (m.installments||[]).forEach(inst =>
+          (inst.pagamentos||[]).forEach(p => { delete p.arquivo; delete p.file; })
+        ));
+        (g.families||[]).forEach(f => (f.installments||[]).forEach(inst =>
+          (inst.pagamentos||[]).forEach(p => { delete p.arquivo; delete p.file; })
+        ));
+      });
+      _store.setItem(STORE_KEY, JSON.stringify(semArquivos));
+      showToast('⚠️ Armazenamento cheio — comprovantes removidos para liberar espaço. Exporte um backup JSON.', 'warn');
+      console.warn('AluguelPRO: dados salvos sem comprovantes (armazenamento cheio)');
+    } catch(e2) {
+      console.error('AluguelPRO: não foi possível salvar', e2);
+    }
+  }
+}
+
+function load() {
+  try {
+    const raw = _store.getItem(STORE_KEY)
+             || _store.getItem('aluguelPRO_v3')
+             || _store.getItem('aluguelPRO_v2');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.groups) state = parsed;
+    }
+  } catch(e) {
+    console.warn('AluguelPRO: erro ao carregar dados salvos', e);
+  }
+
+  // Garante estrutura mínima em todos os grupos
+  state.groups.forEach(g => {
+    if (!g.families)  g.families  = [];
+    if (!g.despesas)  g.despesas  = [];
+    if (!g.caixa)     g.caixa     = [];
+    if (g.rental) {
+      const r = g.rental;
+      if (!r.valor        && r.value)         r.valor         = r.value;
+      if (!r.patrocinio   && r.sponsor)       r.patrocinio    = r.sponsor;
+      if (!r.parcelas     && r.installments)  r.parcelas      = r.installments;
+      if (!r.referencia   && r.refDate)       r.referencia    = r.refDate;
+      if (!r.diaVencimento && r.dueDay)       r.diaVencimento = r.dueDay;
+      if (!r.contratoArquivo && r.generalFile)    r.contratoArquivo = r.generalFile;
+      if (!r.contratoNome    && r.generalFileName) r.contratoNome   = r.generalFileName;
+    }
+    (g.members||[]).forEach(m => {
+      if (!m.installments) m.installments = [];
+      m.installments.forEach(inst => {
+        if (!inst.pagamentos && inst.payments)   inst.pagamentos = inst.payments;
+        if (!inst.vencimento && inst.due)         inst.vencimento = inst.due;
+        if (!inst.valorDevido && inst.amountDue)  inst.valorDevido = inst.amountDue;
+        (inst.pagamentos||[]).forEach(p => {
+          if (!p.valor       && p.value)     p.valor       = p.value;
+          if (!p.data        && p.date)      p.data        = p.date;
+          if (!p.arquivo     && p.file)      p.arquivo     = p.file;
+          if (!p.nomeArquivo && p.fileName)  p.nomeArquivo = p.fileName;
+        });
+      });
+    });
+    (g.despesas||[]).forEach(d => {
+      if (!d.rateios) d.rateios = [];
+      (g.members||[]).forEach(m => {
+        if (!d.rateios.find(r => r.memberId === m.id)) {
+          d.rateios.push({ memberId: m.id, pagamentos: [] });
+        }
+      });
+    });
+    (g.families||[]).forEach(f => {
+      if (!f.installments) f.installments = [];
+      if (!f.mode) f.mode = 'unique';
+      f.installments.forEach(inst => {
+        if (!inst.pagamentos && inst.payments)   inst.pagamentos = inst.payments;
+        if (!inst.vencimento && inst.due)         inst.vencimento = inst.due;
+        if (!inst.valorDevido && inst.amountDue)  inst.valorDevido = inst.amountDue;
+        (inst.pagamentos||[]).forEach(p => {
+          if (!p.valor       && p.value)     p.valor       = p.value;
+          if (!p.data        && p.date)      p.data        = p.date;
+          if (!p.arquivo     && p.file)      p.arquivo     = p.file;
+          if (!p.nomeArquivo && p.fileName)  p.nomeArquivo = p.fileName;
+        });
+      });
+    });
+  });
+}
+
+/* ── UTILS ── */
+function uid() { return Date.now().toString(36)+Math.random().toString(36).slice(2); }
+function fmtCur(v) { return new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v||0); }
+function parseMoney(s) {
+  if (!s) return 0;
+  const c = String(s).replace(/[R$\s]/g,'').replace(/\./g,'').replace(',','.');
+  const v = parseFloat(c); return isNaN(v)?0:v;
+}
+
+// Máscara BRL: formata o input enquanto o usuário digita
+function applyBRLMask(el) {
+  // Remove tudo exceto dígitos
+  let raw = el.value.replace(/\D/g,'');
+  if (!raw) { el.value=''; return; }
+  // Interpreta como centavos (últimos 2 dígitos)
+  const cents = parseInt(raw, 10);
+  const reais = cents / 100;
+  el.value = new Intl.NumberFormat('pt-BR', {
+    style: 'currency', currency: 'BRL',
+    minimumFractionDigits: 2, maximumFractionDigits: 2
+  }).format(reais);
+}
+
+// Lê valor de um campo com máscara BRL
+function readBRLField(id) {
+  return parseMoney(document.getElementById(id).value);
+}
+
+// Define valor em um campo com máscara BRL
+function setBRLField(id, value) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (!value && value !== 0) { el.value=''; return; }
+  el.value = new Intl.NumberFormat('pt-BR', {
+    style: 'currency', currency: 'BRL',
+    minimumFractionDigits: 2, maximumFractionDigits: 2
+  }).format(value);
+}
+function fmtMonthYear(s) {
+  if (!s) return '—';
+  const [y,m] = s.split('-');
+  return ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][+m-1]+'/'+y;
+}
+function fmtDate(s) { if (!s) return '—'; const [y,m,d]=s.split('-'); return `${d}/${m}/${y}`; }
+function shortDate(dataStr) {
+  if (!dataStr) return '—';
+  const [y,m,d] = dataStr.split('-');
+  const meses = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  return `${d}/${meses[+m-1]}/${y}`;
+}
+function getInitials(n) { return (n||'?').split(' ').slice(0,2).map(x=>x[0]).join('').toUpperCase(); }
+function getGroup() { return state.groups.find(g=>g.id===state.activeGroup); }
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+/* ── GERA DATAS DE VENCIMENTO ── */
+
+/* ── CÁLCULOS ── */
+function getMembersInFamilies(group) {
+  const s = new Set();
+  (group.families||[]).forEach(f => (f.memberIds||[]).forEach(id => s.add(id)));
+  return s;
+}
+
+function calcCotas(group) {
+  // Cotas = total de pessoas. Núcleo no modo 'unique' conta cada membro como 1 cota
+  // (o núcleo paga o total de todos os seus membros de uma vez, mas a cota por pessoa é a mesma)
+  // Núcleo no modo 'individual': cada membro paga sua própria cota individualmente
+  // Em ambos os casos, o número de cotas = número total de integrantes cadastrados
+  const totalMembers = (group.members||[]).length;
+  const inFam = getMembersInFamilies(group);
+  const individuais = (group.members||[]).filter(m=>!inFam.has(m.id)).length;
+  const emNucleos = inFam.size; // membros dentro de algum núcleo
+  return { individuais, emNucleos, total: totalMembers };
+}
+
+function calcGrupo(grupo) {
+  const r = grupo.rental||{};
+  // Suporte a campos antigos (inglês) e novos (português)
+  const aluguel      = r.valor      || r.value       || 0;
+  const patrocinio   = r.patrocinio || r.sponsor      || 0;
+  const numParcelas  = r.parcelas   || r.installments || 1;
+  const totalFinal   = Math.max(0, aluguel - patrocinio);
+  const { total: cotas } = calcCotas(grupo);
+  const valorPorCota       = cotas > 0 ? totalFinal / cotas : 0;
+  const valorParcelaCota   = numParcelas > 0 ? valorPorCota / numParcelas : valorPorCota;
+  const valorParcelaTotal  = numParcelas > 0 ? totalFinal / numParcelas : totalFinal;
+  return { aluguel, patrocinio, totalFinal, valorPorCota, valorParcelaCota, valorParcelaTotal, numParcelas, cotas };
+}
+
+// Calcula total pago e restante de uma lista de parcelas
+function calcInstallmentsStatus(listaParcelas) {
+  let totalDevido = 0, totalPago = 0;
+  const hoje = new Date().toISOString().split('T')[0];
+  let temVencida = false;
+  (listaParcelas||[]).forEach(p => {
+    const dev = Math.round((p.valorDevido || p.amountDue || 0) * 100) / 100;
+    const pags = p.pagamentos || p.payments || [];
+    const pago = Math.round(pags.reduce((s, pg) => s + (pg.valor || pg.value || 0), 0) * 100) / 100;
+    totalDevido += dev;
+    totalPago   += pago;
+    // Parcela vencida: tem data, passou de hoje e não está quitada
+    const vc = p.vencimento || p.due || '';
+    if (vc && vc < hoje && pago < dev - 0.01) temVencida = true;
+  });
+  totalDevido = Math.round(totalDevido * 100) / 100;
+  totalPago   = Math.round(totalPago   * 100) / 100;
+  const restante = Math.max(0, totalDevido - totalPago);
+  const pct = totalDevido > 0 ? Math.min(100, (totalPago / totalDevido) * 100) : 0;
+  let status = 'Pendente';
+  if (totalDevido > 0 && totalPago >= totalDevido - 0.01) status = 'Quitado';
+  else if (temVencida)   status = 'Vencido';
+  else if (totalPago > 0) status = 'Em dia';
+  return { totalDevido, totalPago, restante, pct, status,
+    totalDue: totalDevido, totalPaid: totalPago, remaining: restante };
+}
+
+// Status de uma única parcela
+function calcInstStatus(parcela) {
+  const pagamentos = parcela.pagamentos || parcela.payments || [];
+  const pago   = Math.round(pagamentos.reduce((s, p) => s + (p.valor || p.value || 0), 0) * 100) / 100;
+  const devido = Math.round((parcela.valorDevido || parcela.amountDue || 0) * 100) / 100;
+  const restante = Math.max(0, devido - pago);
+  let status = 'Pendente';
+  // Tolerância de R$ 0,01 para evitar falso "Parcial" por arredondamento de ponto flutuante
+  if (devido > 0 && pago >= devido - 0.01) status = 'Pago';
+  else if (pago > 0) status = 'Parcial';
+  return { pago, devido, restante, status,
+    paid: pago, due: devido, remaining: restante };
+}
+
+function calcGroupTotals(grupo) {
+  const { totalFinal } = calcGrupo(grupo);
+  const emNucleos = getMembersInFamilies(grupo);
+  let totalPago = 0;
+
+  // Membros individuais
+  (grupo.members||[]).filter(m=>!emNucleos.has(m.id)).forEach(m => {
+    totalPago += calcInstallmentsStatus(m.installments).totalPaid;
+  });
+  // Núcleos
+  (grupo.families||[]).forEach(f => {
+    if (f.mode === 'unique') {
+      totalPago += calcInstallmentsStatus(f.installments).totalPaid;
+    } else {
+      (f.memberIds||[]).forEach(mid => {
+        const m = (grupo.members||[]).find(x=>x.id===mid);
+        if (m) totalPago += calcInstallmentsStatus(m.installments).totalPaid;
+      });
+    }
+  });
+  const restante = Math.max(0, totalFinal - totalPago);
+  const pct = totalFinal > 0 ? Math.min(100,(totalPago/totalFinal)*100) : 0;
+  let status = 'Pendente';
+  if (totalPago >= totalFinal && totalFinal > 0) status = 'Pago';
+  else if (totalPago > 0) status = 'Parcial';
+  // aliases para retrocompatibilidade
+  return { totalFinal, totalPaid: totalPago, totalPago, remaining: restante, restante, pct, status };
+}
+
+/* ── GERAÇÃO DE PARCELAS ── */
+function reconstruirParcelas(grupo) {
+  const r = grupo.rental||{};
+  const refDate   = r.referencia || r.refDate;
+  const dueDay    = r.diaVencimento || r.dueDay;
+  const parcelas  = r.parcelas || r.installments || 1;
+  const { valorParcelaCota } = calcGrupo(grupo);
+  const datasVencimento = gerarDatasVencimento(refDate, dueDay, parcelas);
+  const emNucleos = getMembersInFamilies(grupo);
+
+  // Helper: separa parcelas normais das parcelas do caixa antes de reconstruir
+  const separar = (lista) => {
+    const normais = (lista||[]).filter(p => !p.origemCaixa);
+    const caixa   = (lista||[]).filter(p => p.origemCaixa);
+    return { normais, caixa };
+  };
+
+  // Membros individuais
+  (grupo.members||[]).filter(m => !emNucleos.has(m.id)).forEach(m => {
+    const { normais, caixa } = separar(m.installments);
+    m.installments = [
+      ...construirParcelas(parcelas, valorParcelaCota, datasVencimento, normais),
+      ...caixa  // preserva parcelas do caixa sempre no final
+    ];
+  });
+
+  // Núcleos
+  (grupo.families||[]).forEach(f => {
+    if (f.mode === 'unique') {
+      const valorNucleo = valorParcelaCota * (f.memberIds||[]).length;
+      const { normais, caixa } = separar(f.installments);
+      f.installments = [
+        ...construirParcelas(parcelas, valorNucleo, datasVencimento, normais),
+        ...caixa
+      ];
+    } else {
+      (f.memberIds||[]).forEach(mid => {
+        const m = (grupo.members||[]).find(x => x.id === mid);
+        if (m) {
+          const { normais, caixa } = separar(m.installments);
+          m.installments = [
+            ...construirParcelas(parcelas, valorParcelaCota, datasVencimento, normais),
+            ...caixa
+          ];
+        }
+      });
+    }
+  });
+}
+
+function construirParcelas(quantidade, valorParcela, datas, existentes) {
+  const resultado = [];
+  for (let i = 0; i < quantidade; i++) {
+    const ex = existentes && existentes[i] ? existentes[i] : null;
+    const pagamentos = ex ? (ex.pagamentos || ex.payments || []) : [];
+    const temPagamento = pagamentos.length > 0;
+    // Só preserva valorDevido se a parcela já tem pagamentos registrados
+    // Caso contrário, atualiza para o valor atual calculado (ex: novo integrante)
+    const valorDevido = (ex && temPagamento && (ex.valorDevido || ex.amountDue))
+      ? (ex.valorDevido || ex.amountDue)
+      : valorParcela;
+    resultado.push({
+      id:          ex ? ex.id : uid(),
+      vencimento:  (ex && ex.vencimento) ? ex.vencimento : (ex?.due || datas[i] || ''),
+      valorDevido,
+      pagamentos
+    });
+  }
+  return resultado;
+}
+
+function gerarDatasVencimento(refDate, diaVencimento, quantidade) {
+  const datas = [];
+  if (!refDate || !diaVencimento || !quantidade) return datas;
+  const [ano, mes] = refDate.split('-').map(Number);
+  for (let i = 0; i < quantidade; i++) {
+    // Mês esperado (0-11) considerando rollover de ano
+    const mesEsperado = (mes - 1 + i) % 12;
+    const d = new Date(ano, mes - 1 + i, diaVencimento);
+    // Ajusta para meses curtos (ex: 31/fev → último dia do mês)
+    // Compara com mesEsperado que já foi calculado com módulo correto
+    while (d.getMonth() !== mesEsperado) { d.setDate(d.getDate() - 1); }
+    const yy = d.getFullYear();
+    const mm = String(d.getMonth()+1).padStart(2,'0');
+    const dd = String(d.getDate()).padStart(2,'0');
+    datas.push(`${yy}-${mm}-${dd}`);
+  }
+  return datas;
+}
+
+/* ── CONTAGEM DE DIAS ── */
+function calcularDiasNaCasa(dataEntrada, dataSaida) {
+  if (!dataEntrada) return null;
+  const entrada = new Date(dataEntrada + 'T00:00:00');
+  const fim     = dataSaida ? new Date(dataSaida + 'T00:00:00') : new Date();
+  const diff    = fim - entrada;
+  const dias    = Math.floor(diff / (1000 * 60 * 60 * 24));
+  return dias;
+}
+
+function formatarContagem(dataEntrada, dataSaida) {
+  const dias = calcularDiasNaCasa(dataEntrada, dataSaida);
+  if (dias === null) return null;
+  if (dias < 0) return { texto: 'Data inválida', cor: '#ff5757', icone: '⚠️' };
+  const anos   = Math.floor(dias / 365);
+  const meses  = Math.floor((dias % 365) / 30);
+  const diasR  = dias % 30;
+  let partes = [];
+  if (anos  > 0) partes.push(`${anos} ano${anos>1?'s':''}`);
+  if (meses > 0) partes.push(`${meses} mês${meses>1?'es':''}`);
+  if (diasR > 0 || partes.length === 0) partes.push(`${diasR} dia${diasR!==1?'s':''}`);
+  const texto = partes.join(', ');
+  if (dataSaida) {
+    // Contagem regressiva até a saída
+    const hoje   = new Date();
+    const saida  = new Date(dataSaida + 'T00:00:00');
+    const restam = Math.ceil((saida - hoje) / (1000 * 60 * 60 * 24));
+    if (restam < 0)  return { texto: `Contrato encerrado há ${Math.abs(restam)} dia(s)`, cor: '#ff5757', icone: '🔴', dias };
+    if (restam === 0) return { texto: 'Último dia hoje!', cor: '#ffb347', icone: '🟡', dias };
+    if (restam <= 30) return { texto: `Faltam ${restam} dia(s) para o término`, cor: '#ffb347', icone: '⚠️', dias };
+    return { texto: `${texto} no imóvel · faltam ${restam} dias`, cor: '#57e5a0', icone: '🏠', dias };
+  }
+  return { texto: `${texto} no imóvel`, cor: '#c8ff57', icone: '🏠', dias };
+}
+
+/* ── PAGAMENTO DE PARCELA ── */
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id, forcar) {
+  if (!forcar) {
+    // Verificar se modal tem dados preenchidos
+    const modal = document.getElementById(id);
+    const inputs = modal ? modal.querySelectorAll('input:not([type=file]):not([type=checkbox]):not([type=date]):not([type=number]), textarea') : [];
+    const temDados = [...inputs].some(el => el.value && el.value.trim() !== '' && el.value !== 'R$ 0,00');
+    if (temDados && id !== 'modalConfirm' && id !== 'modalEditPay') {
+      showConfirm('Descartar alterações?', 'Os dados preenchidos serão perdidos. Deseja fechar mesmo assim?', () => {
+        document.getElementById(id).classList.remove('open');
+        // Limpar campos após fechar
+        inputs.forEach(el => el.value = '');
+      });
+      return;
+    }
+  }
+  document.getElementById(id).classList.remove('open');
+}
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.modal-overlay').forEach(o => {
+    o.addEventListener('click', e => { if (e.target===o && o.id!=='modalConfirm') closeModal(o.id); });
+  });
+});
+
+/* ── SIDEBAR ── */
+function renderGroupsList() {
+  const el = document.getElementById('groupsList');
+  if (!state.groups.length) { el.innerHTML='<div style="padding:12px 10px;color:#5a5a70;font-size:12px;text-align:center;">Nenhum grupo ainda</div>'; return; }
+  el.innerHTML = state.groups.map(g => {
+    const active = g.id===state.activeGroup;
+    return `<div class="group-item ${active?'active':''}" onclick="selectGroup('${g.id}')">
+      <div class="group-dot"></div>
+      <div class="group-name">${esc(g.name)}</div>
+      <span style="font-size:14px;">${g.type==='Familiar'?'👨‍👩‍👧':'💼'}</span>
+    </div>`;
+  }).join('');
+}
+function selectGroup(id) {
+  state.activeGroup=id; save(); renderGroupsList(); renderMainContent(); closeMobileSidebar();
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+/* ── GRUPO CRUD ── */
+function openGroupModal(editId) {
+  editingGroupId = editId||null;
+  const g = editId ? state.groups.find(x=>x.id===editId) : null;
+  document.getElementById('modalGroupTitle').textContent = g?'Editar Grupo':'Novo Grupo';
+  document.getElementById('inputGroupName').value = g?g.name:'';
+  document.getElementById('inputGroupType').value = g?g.type:'Familiar';
+  openModal('modalGroup');
+}
+function saveGroup() {
+  const name = document.getElementById('inputGroupName').value.trim();
+  const type = document.getElementById('inputGroupType').value;
+  if (!name) { showToast('Nome obrigatório','error'); return; }
+  if (editingGroupId) {
+    const g = state.groups.find(x=>x.id===editingGroupId);
+    if (g) { g.name=name; g.type=type; }
+  } else {
+    const g = {id:uid(),name,type,rental:{},members:[],families:[]};
+    state.groups.push(g);
+    if (!state.activeGroup) state.activeGroup=g.id;
+  }
+  save(); closeModal('modalGroup'); renderGroupsList(); renderMainContent();
+  showToast(editingGroupId?'Grupo atualizado':'Grupo criado','success');
+  editingGroupId=null;
+}
+function confirmDeleteGroup(id) {
+  showConfirm('Remover Grupo','Todos os dados serão perdidos.', () => {
+    state.groups = state.groups.filter(g=>g.id!==id);
+    if (state.activeGroup===id) state.activeGroup = state.groups.length > 0 ? state.groups[0].id : null;
+    save(); renderGroupsList(); renderMainContent(); showToast('Grupo removido','success');
+  });
+}
+function confirmClearAll() {
+  showConfirm('⚠️ Limpar Todos os Dados','Esta ação é irreversível. TODOS os grupos, integrantes, parcelas e pagamentos serão permanentemente apagados.', () => {
+    state={groups:[],activeGroup:null}; save(); renderGroupsList(); renderMainContent();
+    showToast('Dados apagados','success');
+  });
+}
+
+/* ── ALUGUEL ── */
+function openRentalModal() {
+  const g = getGroup(); if (!g) return;
+  const r = g.rental||{};
+  // Define valor apenas se existir, senão deixa vazio
+  if (r.valor) setBRLField('inputRentalValue', r.valor); else document.getElementById('inputRentalValue').value='';
+  if (r.patrocinio) setBRLField('inputSponsor', r.patrocinio); else document.getElementById('inputSponsor').value='';
+  document.getElementById('inputInstallments').value = r.parcelas||1;
+  document.getElementById('inputRefDate').value = r.referencia||'';
+  document.getElementById('inputDueDay').value = r.diaVencimento||'';
+  document.getElementById('inputHouseURL').value = r.url||'';
+  document.getElementById('inputAddress').value = r.endereco||'';
+  document.getElementById('inputEntryDate').value = r.dataEntrada||'';
+  document.getElementById('inputExitDate').value = r.dataSaida||'';
+  document.getElementById('inputNotes').value = r.observacoes||'';
+  document.getElementById('previewGeneral').innerHTML = r.contratoArquivo ? renderFilePreview(r.contratoArquivo, r.contratoNome) : '';
+
+  tmpFiles['fileGeneral'] = null;
+  openModal('modalRental');
+}
+function saveRentalData() {
+  const g = getGroup(); if (!g) return;
+  const valor = readBRLField('inputRentalValue');
+  if (!valor) { showToast('Valor do aluguel obrigatório','error'); return; }
+  if (!g.rental) g.rental={};
+  g.rental.valor        = valor;
+  g.rental.patrocinio   = readBRLField('inputSponsor');
+  g.rental.parcelas     = parseInt(document.getElementById('inputInstallments').value)||1;
+  g.rental.referencia   = document.getElementById('inputRefDate').value;
+  g.rental.diaVencimento= parseInt(document.getElementById('inputDueDay').value)||null;
+  g.rental.url          = document.getElementById('inputHouseURL').value.trim();
+  g.rental.endereco     = document.getElementById('inputAddress').value.trim();
+  const entryDate = document.getElementById('inputEntryDate').value;
+  const exitDate  = document.getElementById('inputExitDate').value;
+  if (entryDate && exitDate && exitDate <= entryDate) {
+    showToast('Data de saída deve ser posterior à data de entrada.', 'error');
+    return;
+  }
+  g.rental.dataEntrada  = entryDate;
+  g.rental.dataSaida    = exitDate;
+  g.rental.observacoes  = document.getElementById('inputNotes').value.trim();
+  if (tmpFiles['fileGeneral']) {
+    g.rental.contratoArquivo = tmpFiles['fileGeneral'].data;
+    g.rental.contratoNome    = tmpFiles['fileGeneral'].name;
+  }
+  reconstruirParcelas(g);
+  save(); closeModal('modalRental'); renderMainContent();
+  showToast('Dados salvos e parcelas geradas','success');
+}
+
+/* ── INTEGRANTE CRUD ── */
+function openMemberModal(editId) {
+  editingMemberId = editId||null;
+  const g = getGroup();
+  const m = editId && g ? g.members.find(x=>x.id===editId) : null;
+  document.getElementById('modalMemberTitle').textContent = m?'Editar Integrante':'Novo Integrante';
+  document.getElementById('inputMemberName').value = m?m.name:'';
+  openModal('modalMember');
+}
+function saveMember() {
+  const g = getGroup(); if (!g) return;
+  const name = document.getElementById('inputMemberName').value.trim();
+  if (!name) { showToast('Nome obrigatório','error'); return; }
+  if (editingMemberId) {
+    const m = g.members.find(x=>x.id===editingMemberId);
+    if (m) m.name=name;
+  } else {
+    const m = {id:uid(),name,installments:[]};
+    g.members.push(m);
+    reconstruirParcelas(g);
+    // Adicionar rateio nas despesas existentes para o novo integrante
+    (g.despesas||[]).forEach(d => garantirRateios(d, g));
+  }
+  save(); closeModal('modalMember'); renderMainContent();
+  showToast(editingMemberId?'Integrante atualizado':'Integrante adicionado','success');
+  editingMemberId=null;
+}
+function confirmDeleteMember(memberId) {
+  showConfirm('Remover Integrante','Pagamentos e rateios de despesas deste integrante serão perdidos.', () => {
+    const g = getGroup(); if (!g) return;
+    (g.families||[]).forEach(f => { f.memberIds=(f.memberIds||[]).filter(id=>id!==memberId); });
+    // Remover rateios de despesas
+    (g.despesas||[]).forEach(d => {
+      d.rateios = (d.rateios||[]).filter(r => r.memberId !== memberId);
+    });
+    g.members = g.members.filter(m=>m.id!==memberId);
+    save(); renderMainContent(); showToast('Integrante removido','success');
+  });
+}
+
+/* ── FAMÍLIA CRUD ── */
+function openFamilyModal(editId) {
+  editingFamilyId = editId||null;
+  const g = getGroup(); if (!g) return;
+  const f = editId ? (g.families||[]).find(x=>x.id===editId) : null;
+  document.getElementById('modalFamilyTitle').textContent = f?'Editar Núcleo':'Novo Núcleo Familiar';
+  document.getElementById('inputFamilyName').value = f?f.name:'';
+  document.getElementById('inputFamilyMode').value = f?f.mode:'unique';
+
+  const inOther = new Set();
+  (g.families||[]).forEach(fam => { if (fam.id!==editId) (fam.memberIds||[]).forEach(id=>inOther.add(id)); });
+  const currentIds = new Set(f?f.memberIds||[]:[]);
+
+  const listEl = document.getElementById('familyMemberSelect');
+  if (!g.members||!g.members.length) {
+    listEl.innerHTML='<div style="padding:12px;color:#5a5a70;font-size:12px;text-align:center;">Nenhum integrante cadastrado</div>';
+  } else {
+    listEl.innerHTML = g.members.map(m => {
+      const blocked = inOther.has(m.id);
+      return `<label class="member-select-item ${blocked?'dis':''}">
+        <input type="checkbox" value="${m.id}" ${currentIds.has(m.id)?'checked':''} ${blocked?'disabled':''}>
+        <span style="font-size:13px;color:${blocked?'#5a5a70':'#9898b0'};">${esc(m.name)}</span>
+        ${blocked?'<span style="font-size:10px;color:#5a5a70;margin-left:auto;">outro núcleo</span>':''}
+      </label>`;
+    }).join('');
+  }
+  openModal('modalFamily');
+}
+function saveFamily() {
+  const g = getGroup(); if (!g) return;
+  const name = document.getElementById('inputFamilyName').value.trim();
+  if (!name) { showToast('Nome obrigatório','error'); return; }
+  const mode = document.getElementById('inputFamilyMode').value;
+  const checked = [...document.querySelectorAll('#familyMemberSelect input:checked')].map(i=>i.value);
+  if (!checked.length) { showToast('Selecione ao menos 1 membro','error'); return; }
+  if (!g.families) g.families=[];
+  if (editingFamilyId) {
+    const f = g.families.find(x=>x.id===editingFamilyId);
+    if (f) { f.name=name; f.memberIds=checked; f.mode=mode; }
+  } else {
+    g.families.push({id:uid(),name,memberIds:checked,mode,installments:[]});
+  }
+  reconstruirParcelas(g);
+  save(); closeModal('modalFamily'); renderMainContent();
+  showToast(editingFamilyId?'Núcleo atualizado':'Núcleo criado','success');
+  editingFamilyId=null;
+}
+function confirmDeleteFamily(fid) {
+  showConfirm('Remover Núcleo','Pagamentos do núcleo serão perdidos.', () => {
+    const g = getGroup(); if (!g) return;
+    g.families=(g.families||[]).filter(f=>f.id!==fid);
+    save(); renderMainContent(); showToast('Núcleo removido','success');
+  });
+}
+
+/* ── PAGAMENTO DE PARCELA ── */
+// Wrapper que verifica disponibilidade antes de abrir modal
+function abrirPagarIntegrante(targetType, targetId) {
+  const idx = getNextOpenInst(targetType, targetId);
+  if (idx === null) {
+    showToast('Todas as parcelas já foram quitadas! ✅', 'success');
+    return;
+  }
+  openPayModal(targetType, targetId, idx);
+}
+
+// payCtx = { targetType:'member'|'family', targetId, instIdx, installmentList }
+function openPayModal(targetType, targetId, instIdx) {
+  const g = getGroup(); if (!g) return;
+  const { valorParcelaCota } = calcGrupo(g);
+
+  let installmentList, rotulo = '', totalPago = 0, restante = 0;
+  if (targetType==='member') {
+    const m = g.members.find(x=>x.id===targetId);
+    if (!m) return;
+    installmentList = m.installments;
+    const st = calcInstallmentsStatus(installmentList);
+    totalPago = st.totalPaid; restante = st.remaining;
+    rotulo = m.name;
+  } else {
+    const f = (g.families||[]).find(x=>x.id===targetId);
+    if (!f) return;
+    installmentList = f.installments;
+    const st = calcInstallmentsStatus(installmentList);
+    totalPago = st.totalPaid; restante = st.remaining;
+    rotulo = `💜 ${f.name}`;
+  }
+  payCtx = { targetType, targetId, instIdx, installmentList };
+
+  if (!installmentList || !installmentList.length) {
+    showToast('Configure os dados do aluguel antes de registrar pagamentos.', 'warn');
+    return;
+  }
+  const parcela = installmentList[instIdx];
+  if (!parcela) {
+    showToast('Parcela não encontrada. Configure o aluguel novamente.', 'warn');
+    return;
+  }
+  const { pago, devido, restante: restParcela } = calcInstStatus(parcela);
+
+  document.getElementById('modalPayTitle').textContent = `Parcela ${instIdx+1} — ${shortDate(parcela.vencimento||parcela.due)}`;
+  document.getElementById('payInfo').innerHTML = `
+    <strong>${esc(rotulo)}</strong><br>
+    Parcela ${instIdx+1} · ${shortDate(parcela.vencimento||parcela.due)}<br>
+    Valor da parcela: <strong>${fmtCur(devido)}</strong><br>
+    Já pago: <strong class="text-s">${fmtCur(pago)}</strong> · Restante: <strong class="text-d">${fmtCur(restParcela)}</strong>
+  `;
+  document.getElementById('inputPayValue').value = '';
+  document.getElementById('inputPayDate').value = new Date().toISOString().split('T')[0];
+  document.getElementById('previewPay').innerHTML = '';
+  document.getElementById('surplusInfo').classList.remove('show');
+  tmpFiles['filePay'] = null;
+  openModal('modalPay');
+}
+
+function onPayValueInput() {
+  if (!payCtx) return;
+  const parcela = payCtx.installmentList[payCtx.instIdx];
+  const { restante } = calcInstStatus(parcela);
+  const v = readBRLField('inputPayValue');
+  const surplusEl = document.getElementById('surplusInfo');
+  const diferenca = v - restante;
+  if (Math.abs(diferenca) > 0.01 && restante > 0) {
+    const abertas = payCtx.installmentList.filter((x,i) => {
+      if (i === payCtx.instIdx) return false;
+      const st = calcInstStatus(x);
+      return st.status !== 'Pago' && st.status !== 'Quitado';
+    }).length;
+    if (diferenca > 0) {
+      surplusEl.innerHTML = abertas > 0
+        ? `💡 Excedente de <strong>${fmtCur(diferenca)}</strong> será distribuído e abatido em ${abertas} parcela(s) futura(s).`
+        : `💡 Excedente de <strong>${fmtCur(diferenca)}</strong> — sem parcelas futuras para distribuir.`;
+    } else {
+      surplusEl.innerHTML = abertas > 0
+        ? `💡 Valor menor: <strong>${fmtCur(Math.abs(diferenca))}</strong> será acrescido em ${abertas} parcela(s) futura(s).`
+        : `💡 Pagamento parcial — sem parcelas futuras para redistribuir.`;
+    }
+    surplusEl.classList.add('show');
+  } else {
+    surplusEl.classList.remove('show');
+  }
+}
+
+function saveInstallmentPayment() {
+  if (!payCtx) return;
+  const v = readBRLField('inputPayValue');
+  if (!v||v<=0) { showToast('Informe um valor válido','error'); return; }
+
+  const lista    = payCtx.installmentList;
+  const idxAtual = payCtx.instIdx;
+  const parcela  = lista[idxAtual];
+  const { restante } = calcInstStatus(parcela);
+
+  const pagamento = { id: uid(), valor: v, data: document.getElementById('inputPayDate').value };
+  if (tmpFiles['filePay']) { pagamento.arquivo = tmpFiles['filePay'].data; pagamento.nomeArquivo = tmpFiles['filePay'].name; }
+  if (!parcela.pagamentos) parcela.pagamentos = [];
+  parcela.pagamentos.push(pagamento);
+
+  // Redistribuir saldo excedente ou déficit nas parcelas FUTURAS não pagas
+  const diferenca = v - restante; // positivo = excedente, negativo = pagou menos
+
+  if (Math.abs(diferenca) > 0.01) {
+    // Parcelas abertas a partir da próxima
+    const abertas = [];
+    for (let i = 0; i < lista.length; i++) {
+      if (i === idxAtual) continue;
+      const st = calcInstStatus(lista[i]);
+      if (st.status !== 'Pago' && st.status !== 'Quitado') abertas.push(i);
+    }
+    if (abertas.length > 0) {
+      const ajustePorParcela = Math.round((diferenca / abertas.length) * 100) / 100;
+      abertas.forEach(i => {
+        // Excedente: abate das próximas. Déficit: acresce nas próximas.
+        const atual = Math.round((lista[i].valorDevido || lista[i].amountDue || 0) * 100) / 100;
+        const novo  = Math.max(0, atual - ajustePorParcela);
+        lista[i].valorDevido = novo;
+        if (lista[i].amountDue !== undefined) lista[i].amountDue = novo;
+      });
+      const acao = diferenca > 0 ? `Excedente de ${fmtCur(diferenca)} distribuído entre ${abertas.length} parcela(s) futura(s).` : `Saldo de ${fmtCur(Math.abs(diferenca))} acrescido nas ${abertas.length} parcela(s) futura(s).`;
+      save(); closeModal('modalPay'); renderMainContent();
+      setTimeout(() => {
+        const body = document.getElementById(`body_${payCtx.targetType}_${payCtx.targetId}`);
+        if (body) body.classList.add('open');
+      }, 60);
+      showToast(acao, 'info');
+      return;
+    }
+  }
+
+  save(); closeModal('modalPay'); renderMainContent();
+  setTimeout(() => {
+    const body = document.getElementById(`body_${payCtx.targetType}_${payCtx.targetId}`);
+    if (body) body.classList.add('open');
+    const ib = document.getElementById(`instBody_${payCtx.targetType}_${payCtx.targetId}_${payCtx.instIdx}`);
+    if (ib) ib.classList.add('open');
+  }, 60);
+  showToast('Pagamento registrado', 'success');
+}
+
+let editPayCtx = null; // { targetType, targetId, instIdx, payIdx }
+
+function openEditPayModal(targetType, targetId, instIdx, payIdx) {
+  const g = getGroup(); if (!g) return;
+  let instList, targetName;
+  if (targetType==='member') {
+    const m = g.members.find(x=>x.id===targetId);
+    if (!m) return;
+    instList = m.installments; targetName = m.name;
+  } else {
+    const f = (g.families||[]).find(x=>x.id===targetId);
+    if (!f) return;
+    instList = f.installments; targetName = `💜 ${f.name}`;
+  }
+  const p = instList[instIdx]?.payments?.[payIdx] ||
+            instList[instIdx]?.pagamentos?.[payIdx];
+  if (!p) return;
+  editPayCtx = { targetType, targetId, instIdx, payIdx };
+
+  const valP  = p.valor  || p.value || 0;
+  const dataP = p.data   || p.date  || '';
+  const arqP  = p.arquivo || p.file || null;
+  const nomeP = p.nomeArquivo || p.fileName || 'arquivo';
+
+  document.getElementById('editPayInfo').innerHTML =
+    `<strong>${esc(targetName)}</strong> · Parcela ${instIdx+1}<br>
+     Pagamento original: <strong>${fmtCur(valP)}</strong> em ${fmtDate(dataP)}`;
+
+  setBRLField('inputEditPayValue', valP);
+  document.getElementById('inputEditPayDate').value = dataP;
+  tmpFiles['fileEditPay'] = null;
+
+  const previewEl = document.getElementById('previewEditPay');
+  if (arqP) {
+    if (arqP.startsWith('data:image')) {
+      previewEl.innerHTML = `<div class="file-preview-wrap">
+        <img src="${arqP}" class="file-preview-img" style="cursor:pointer;" onclick="viewImg('${arqP}')">
+        <button class="btn-remove-file" onclick="clearFile('fileEditPay','previewEditPay');editPayCtx._clearFile=true">✕</button>
+      </div>`;
+    } else {
+      previewEl.innerHTML = `<div class="file-preview-wrap">
+        <div class="file-preview-name">📄 ${esc(nomeP)}</div>
+        <button class="btn-remove-file" onclick="clearFile('fileEditPay','previewEditPay');editPayCtx._clearFile=true">✕</button>
+      </div>`;
+    }
+  } else { previewEl.innerHTML = ''; }
+  openModal('modalEditPay');
+}
+
+function saveEditPayment() {
+  if (!editPayCtx) return;
+  const g = getGroup(); if (!g) return;
+  const v = readBRLField('inputEditPayValue');
+  if (!v||v<=0) { showToast('Informe um valor válido','error'); return; }
+
+  let instList;
+  if (editPayCtx.targetType==='member') {
+    const m = g.members.find(x=>x.id===editPayCtx.targetId);
+    if (m) instList = m.installments;
+  } else {
+    const f = (g.families||[]).find(x=>x.id===editPayCtx.targetId);
+    if (f) instList = f.installments;
+  }
+  if (!instList) return;
+  const parcela = instList[editPayCtx.instIdx];
+  // Suporte a pagamentos (PT) e payments (legado)
+  const listaPagamentos = parcela.pagamentos || parcela.payments || [];
+  const p = listaPagamentos[editPayCtx.payIdx];
+  if (!p) return;
+
+  p.valor = v; p.value = v; // sync legado
+  p.data  = document.getElementById('inputEditPayDate').value;
+  p.date  = p.data;
+  if (tmpFiles['fileEditPay']) {
+    p.arquivo     = tmpFiles['fileEditPay'].data;
+    p.nomeArquivo = tmpFiles['fileEditPay'].name;
+    p.file     = p.arquivo;
+    p.fileName = p.nomeArquivo;
+  } else if (editPayCtx._clearFile) {
+    p.arquivo = null; p.nomeArquivo = null;
+    p.file    = null; p.fileName    = null;
+  }
+
+  save(); closeModal('modalEditPay'); renderMainContent();
+  // Reabrir card e parcela
+  setTimeout(() => {
+    const body = document.getElementById(`body_${editPayCtx.targetType}_${editPayCtx.targetId}`);
+    if (body) body.classList.add('open');
+    const ib = document.getElementById(`instBody_${editPayCtx.targetType}_${editPayCtx.targetId}_${editPayCtx.instIdx}`);
+    if (ib) ib.classList.add('open');
+  }, 60);
+  showToast('Pagamento atualizado','success');
+  editPayCtx = null;
+}
+
+function confirmDeletePaymentFromEdit() {
+  if (!editPayCtx) return;
+  closeModal('modalEditPay');
+  showConfirm('Excluir Pagamento','Deseja excluir este pagamento?', () => {
+    const g = getGroup(); if (!g) return;
+    let lista;
+    if (editPayCtx.targetType==='member') {
+      const m = g.members.find(x=>x.id===editPayCtx.targetId);
+      if (m) lista = m.installments;
+    } else {
+      const f = (g.families||[]).find(x=>x.id===editPayCtx.targetId);
+      if (f) lista = f.installments;
+    }
+    if (lista && lista[editPayCtx.instIdx]) {
+      const pags = lista[editPayCtx.instIdx].pagamentos || lista[editPayCtx.instIdx].payments;
+      if (pags) pags.splice(editPayCtx.payIdx, 1);
+    }
+    save(); renderMainContent(); showToast('Pagamento excluído','success');
+    editPayCtx = null;
+  });
+}
+
+function confirmDeletePayment(tipoAlvo, idAlvo, idxParcela, idxPagamento) {
+  showConfirm('Remover Pagamento','Deseja remover este pagamento?', () => {
+    const g = getGroup(); if (!g) return;
+    let lista;
+    if (tipoAlvo==='member') { const m=g.members.find(x=>x.id===idAlvo); if(m) lista=m.installments; }
+    else { const f=(g.families||[]).find(x=>x.id===idAlvo); if(f) lista=f.installments; }
+    if (lista && lista[idxParcela]) {
+      const pags = lista[idxParcela].pagamentos || lista[idxParcela].payments;
+      if (pags) pags.splice(idxPagamento, 1);
+    }
+    save(); renderMainContent(); showToast('Pagamento removido','success');
+  });
+}
+
+
+/* ── RENDER MAIN ── */
+function renderMainContent() {
+  const g = getGroup();
+  const emptyEl = document.getElementById('emptyState');
+  const contentEl = document.getElementById('groupContent');
+  if (!g) {
+    emptyEl.classList.remove('hidden'); contentEl.classList.add('hidden');
+    document.getElementById('topbarTitle').innerHTML='Selecione um grupo';
+    document.getElementById('topbarActions').innerHTML='';
+    return;
+  }
+  emptyEl.classList.add('hidden'); contentEl.classList.remove('hidden');
+  document.getElementById('topbarTitle').innerHTML=`${esc(g.name)} <span class="topbar-type-badge">${g.type}</span>`;
+  document.getElementById('topbarActions').innerHTML=`
+    <button class="btn btn-secondary btn-sm" onclick="openGroupModal('${g.id}')" aria-label="Editar grupo">✏️ Editar</button>
+    <button class="btn btn-secondary btn-sm" onclick="exportPDF()" aria-label="Exportar relatório em PDF" title="Gera relatório completo para impressão/PDF">📄 Relatório</button>
+    <button class="btn btn-danger btn-sm" onclick="confirmDeleteGroup('${g.id}')" aria-label="Excluir grupo">🗑 Excluir</button>`;
+
+  const calc = calcGrupo(g);
+  const totals = calcGroupTotals(g);
+  const r = g.rental||{};
+  const totaisDespesas = calcTotalDespesas(g);
+  const saldoCaixa     = calcSaldoCaixa(g);
+
+  const statsHTML = `
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:12px;">
+      <div class="stat-card">
+        <div class="stat-label">Aluguel Total</div>
+        <div class="stat-value accent">${fmtCur(calc.aluguel)}</div>
+        <div class="stat-sub">${calc.numParcelas}x de ${fmtCur(calc.valorParcelaTotal)}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Por Integrante</div>
+        <div class="stat-value">${fmtCur(calc.valorPorCota)}</div>
+        <div class="stat-sub">${calc.cotas} integrante(s) · ${fmtCur(calc.valorParcelaCota)}/mês</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Total a Pagar</div>
+        <div class="stat-value">${fmtCur(totals.remaining)}</div>
+        <div class="stat-sub">Pago: ${fmtCur(totals.totalPaid)} · ${totals.pct.toFixed(0)}%</div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px;">
+      <div class="stat-card" style="border-color:rgba(87,229,160,.2);">
+        <div class="stat-label" style="color:#57e5a0;">Aluguel Pago</div>
+        <div class="stat-value success">${fmtCur(totals.totalPaid)}</div>
+        <div class="stat-sub">Status: ${totals.status}</div>
+      </div>
+      <div class="stat-card" style="border-color:rgba(255,179,71,.2);">
+        <div class="stat-label" style="color:#ffb347;">Despesas</div>
+        <div class="stat-value" style="color:#ffb347;">${fmtCur(totaisDespesas.totalValor)}</div>
+        <div class="stat-sub">
+          Pago: ${fmtCur(totaisDespesas.totalPago)}
+          ${totaisDespesas.totalRestante > 0
+            ? ` · <span style="color:#ff5757;">deve ${fmtCur(totaisDespesas.totalRestante)}</span>`
+            : ' · <span style="color:#57e5a0;">quitado ✓</span>'}
+        </div>
+      </div>
+      <div class="stat-card" style="border-color:${saldoCaixa>=0?'rgba(87,229,160,.2)':'rgba(255,87,87,.2)'};">
+        <div class="stat-label" style="color:${saldoCaixa>=0?'#57e5a0':'#ff5757'};">Caixa</div>
+        <div class="stat-value" style="color:${saldoCaixa>=0?'#57e5a0':'#ff5757'};">${fmtCur(saldoCaixa)}</div>
+        <div class="stat-sub">${(g.caixa||[]).length} movimentação(ões)</div>
+      </div>
+    </div>`;
+
+  const pct=totals.pct, barC=pct>=100?'s':pct>0?'p':'d';
+  const progressHTML = calc.aluguel > 0 ? `
+    <div style="margin-bottom:20px;">
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:#5a5a70;margin-bottom:6px;"><span>Progresso geral</span><strong style="color:#9898b0;">${pct.toFixed(1)}%</strong></div>
+      <div class="progress-wrap"><div class="progress-bar ${barC}" style="width:${pct}%"></div></div>
+    </div>` : '';
+
+  // Banner de dias na casa
+  const dataEntrada = r.dataEntrada || r.entryDate || '';
+  const dataSaida   = r.dataSaida   || r.exitDate  || '';
+  const contagem    = dataEntrada ? formatarContagem(dataEntrada, dataSaida) : null;
+  const bannerDias  = contagem ? `
+    <div style="margin-bottom:20px;padding:14px 18px;background:#1e1e27;border:1px solid #2a2a38;border-radius:12px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+      <span style="font-size:28px;">${contagem.icone}</span>
+      <div>
+        <div style="font-family:'Segoe UI', system-ui, sans-serif;font-weight:700;font-size:15px;color:${contagem.cor};">${contagem.texto}</div>
+        <div style="font-size:11px;color:#5a5a70;margin-top:3px;">
+          Entrada: ${fmtDate(dataEntrada)}
+          ${dataSaida ? ` · Saída prevista: ${fmtDate(dataSaida)}` : ' · Sem data de saída definida'}
+          ${contagem.dias !== undefined ? ` · ${contagem.dias} dia(s) no total` : ''}
+        </div>
+      </div>
+    </div>` : '';
+
+  const rentalHTML = `
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title"><div class="card-title-icon">🏠</div> Dados do Aluguel</div>
+        <button class="btn btn-secondary btn-sm" onclick="openRentalModal()">✏️ Editar</button>
+      </div>
+      ${bannerDias}
+      <div class="form-grid cols-3" style="font-size:13px;">
+        <div><div class="form-label">Valor</div><div style="font-weight:600;margin-top:4px;">${fmtCur(calc.aluguel)}</div></div>
+        <div><div class="form-label">Patrocínio</div><div style="font-weight:600;margin-top:4px;">${fmtCur(calc.patrocinio)}</div></div>
+        <div><div class="form-label">Valor Final</div><div style="font-weight:600;color:#c8ff57;margin-top:4px;">${fmtCur(calc.totalFinal)}</div></div>
+        <div><div class="form-label">Referência</div><div style="font-weight:600;margin-top:4px;">${fmtMonthYear(r.referencia||r.refDate)}</div></div>
+        <div><div class="form-label">Dia de Vencimento</div><div style="font-weight:600;margin-top:4px;">${(r.diaVencimento||r.dueDay)?'Dia '+(r.diaVencimento||r.dueDay):'—'}</div></div>
+        <div><div class="form-label">Parcelamento Total</div><div style="font-weight:600;margin-top:4px;">${calc.numParcelas}x de ${fmtCur(calc.valorParcelaTotal)}</div></div>
+        <div style="grid-column:1/-1;background:#1e1e27;border:1px solid #2a2a38;border-radius:8px;padding:10px 14px;display:flex;gap:24px;flex-wrap:wrap;">
+          <div><div class="form-label">Parcela por integrante</div><div style="font-weight:700;color:#c8ff57;margin-top:2px;font-size:15px;">${fmtCur(calc.valorParcelaCota)}/mês</div></div>
+          ${calc.cotas>0?`<div><div class="form-label">Divisão mensal</div><div style="font-weight:600;margin-top:2px;">${calc.cotas} integrantes × ${fmtCur(calc.valorParcelaCota)} = ${fmtCur(calc.valorParcelaTotal)}/mês</div></div>`:''}
+        </div>
+        ${(r.endereco)?`<div style="grid-column:1/-1;"><div class="form-label">Endereço</div><div style="font-weight:500;margin-top:4px;color:#9898b0;">📍 ${esc(r.endereco)}</div></div>`:''}
+        ${r.url?`<div style="grid-column:1/-1;"><div class="form-label">Link</div><a href="${esc(r.url)}" target="_blank" style="color:#c8ff57;text-decoration:none;font-size:13px;">🔗 ${esc(r.url)}</a></div>`:''}
+        ${(r.observacoes)?`<div style="grid-column:1/-1;"><div class="form-label">Observações</div><div style="font-size:13px;color:#9898b0;margin-top:4px;white-space:pre-wrap;">${esc(r.observacoes)}</div></div>`:''}
+        ${(r.contratoArquivo||r.generalFile)?`<div style="grid-column:1/-1;"><div class="form-label" style="margin-bottom:8px;">Contrato da Casa</div>${renderFilePreview(r.contratoArquivo||r.generalFile, r.contratoNome||r.generalFileName)}</div>`:''}
+      </div>
+    </div>`;
+
+  const inFam = getMembersInFamilies(g);
+  const individuais = (g.members||[]).filter(m=>!inFam.has(m.id));
+  const families = g.families||[];
+
+  const membersHTML = `
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title"><div class="card-title-icon">👥</div> Integrantes & Núcleos</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn btn-family btn-sm" onclick="openFamilyModal()">💜 Novo Núcleo</button>
+          <button class="btn btn-primary btn-sm" onclick="openMemberModal()">+ Integrante</button>
+        </div>
+      </div>
+      ${(individuais.length || families.length) ? `
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;padding:10px 14px;background:#1e1e27;border-radius:8px;border:1px solid #2a2a38;">
+          <div style="font-size:12px;color:#5a5a70;">
+            <span style="font-weight:700;color:#9898b0;">${individuais.length}</span> individual(is)
+          </div>
+          <div style="color:#33334a;">·</div>
+          <div style="font-size:12px;color:#5a5a70;">
+            <span style="font-weight:700;color:#b57aff;">${families.length}</span> núcleo(s) familiar(es)
+            ${families.length ? `<span style="color:#5a5a70;"> (${families.reduce((s,f)=>s+(f.memberIds||[]).length,0)} membros)</span>` : ''}
+          </div>
+          <div style="color:#33334a;">·</div>
+          <div style="font-size:12px;color:#5a5a70;">
+            <span style="font-weight:700;color:#c8ff57;">${calc.cotas}</span> integrante(s) total
+          </div>
+        </div>` : ''}
+      ${!individuais.length && !families.length ? `
+        <div style="text-align:center;padding:32px;color:#5a5a70;">
+          <div style="font-size:32px;margin-bottom:8px;">👤</div>
+          <div>Nenhum integrante cadastrado</div>
+        </div>` : `
+        <div class="members-grid">
+          ${families.map(f => renderFamilyCard(f, g, calc)).join('')}
+          ${individuais.map(m => renderMemberCard(m, g, calc, 'member')).join('')}
+        </div>
+      `}
+      ${g.members && g.members.length > 0 && (g.despesas||[]).length > 0 ? `
+        <div style="margin-top:16px;padding:12px 16px;background:#1e1e27;border-radius:8px;border:1px solid rgba(255,179,71,.2);">
+          <div style="font-size:11px;color:#ffb347;font-weight:700;letter-spacing:.5px;text-transform:uppercase;margin-bottom:10px;">Despesas por integrante</div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            ${g.members.map(m => {
+              const totalDev = (g.despesas||[]).reduce((s,d) => s + calcRateioPorPessoa(d,g), 0);
+              const totalPg  = (g.despesas||[]).reduce((s,d) => {
+                const rat = (d.rateios||[]).find(r=>r.memberId===m.id);
+                return s + (rat ? (rat.pagamentos||[]).reduce((sp,p)=>sp+(p.valor||0),0) : 0);
+              }, 0);
+              const rest = Math.max(0, totalDev - totalPg);
+              return `<div style="display:flex;align-items:center;gap:10px;font-size:13px;">
+                <div class="member-avatar" style="width:26px;height:26px;font-size:10px;flex-shrink:0;">${getInitials(m.name)}</div>
+                <span style="flex:1;color:#9898b0;">${esc(m.name)}</span>
+                <span style="color:#57e5a0;font-weight:600;">${fmtCur(totalPg)}</span>
+                ${rest>0?`<span style="color:#ff5757;font-size:11px;">deve ${fmtCur(rest)}</span>`:'<span style="color:#57e5a0;font-size:11px;">✓ quitado</span>'}
+              </div>`;
+            }).join('')}
+          </div>
+        </div>` : ''}
+      ${g.members && g.members.length > 0 ? `
+        <div style="margin-top:16px;padding:12px 16px;background:#1e1e27;border-radius:8px;border:1px solid #2a2a38;">
+          <div style="font-size:11px;color:#5a5a70;font-weight:700;letter-spacing:.5px;text-transform:uppercase;margin-bottom:8px;">Todos os integrantes</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;">
+            ${g.members.map(m => {
+              const fam = families.find(f=>(f.memberIds||[]).includes(m.id));
+              return `<div style="display:flex;align-items:center;gap:6px;padding:4px 10px;background:#252530;border-radius:99px;font-size:12px;color:#9898b0;">
+                <span>${esc(m.name)}</span>
+                ${fam?`<span style="color:#b57aff;font-size:10px;font-weight:700;">💜 ${esc(fam.name)}</span>`:''}
+                <button class="btn btn-ghost btn-icon" style="padding:2px 4px;font-size:11px;" onclick="openMemberModal('${m.id}')">✏️</button>
+                <button class="btn btn-ghost btn-icon" style="padding:2px 4px;font-size:11px;" onclick="confirmDeleteMember('${m.id}')">🗑</button>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>` : ''}
+    </div>`;
+
+  contentEl.innerHTML = statsHTML + progressHTML + rentalHTML + membersHTML + renderDespesasCard(g) + renderCaixaCard(g) + renderHistoryCard(g);
+}
+
+/* ── RENDER FAMILY CARD ── */
+function renderFamilyCard(f, g, calc) {
+  const membersList = (g.members||[]).filter(m=>(f.memberIds||[]).includes(m.id));
+  const memberCount = membersList.length;
+
+  if (f.mode === 'unique') {
+    // Após rebuildAllInstallments, st.totalDue = soma dos amountDue corretos
+    const st = calcInstallmentsStatus(f.installments);
+    // cotaTotal e famInstValue derivados do cálculo atual (não do storage antigo)
+    const famInstValue = calc.valorParcelaCota * memberCount;
+    const cotaTotal = famInstValue * calc.numParcelas;
+    const statusClass = st.status==='Quitado'?'pill-paid':st.status==='Em dia'?'pill-partial':st.status==='Vencido'?'pill-overdue':'pill-pending';
+    const pct = cotaTotal > 0 ? Math.min(100, (st.totalPaid / cotaTotal) * 100) : 0;
+    const barC = pct>=100?'s':pct>0?'p':'d';
+    const remaining = Math.max(0, cotaTotal - st.totalPaid);
+    return `
+      <div class="member-card is-family">
+        <div class="member-header" onclick="toggleBody('family','${f.id}')">
+          <div class="member-avatar fam">💜</div>
+          <div class="member-info">
+            <div class="member-name">${esc(f.name)} <span class="pill pill-family">núcleo · pagamento único</span></div>
+            <div class="member-meta">${membersList.map(m=>esc(m.name)).join(', ')} · ${fmtCur(st.totalPaid)} pago de ${fmtCur(cotaTotal)}</div>
+            <div class="progress-wrap"><div class="progress-bar ${barC}" style="width:${pct}%"></div></div>
+          </div>
+          <span class="pill ${statusClass}">${st.status}</span>
+          <div class="member-actions" onclick="event.stopPropagation()">
+            <button class="btn btn-family btn-sm" onclick="abrirPagarIntegrante('family','${f.id}')">+ Pagar</button>
+            <button class="btn btn-ghost btn-icon btn-sm" onclick="openFamilyModal('${f.id}')">✏️</button>
+            <button class="btn btn-danger btn-icon btn-sm" onclick="confirmDeleteFamily('${f.id}')">🗑</button>
+          </div>
+        </div>
+        <div class="member-body" id="body_family_${f.id}">
+          <div class="summary-boxes">
+            <div class="sum-box"><div class="sum-box-label">Cota Total</div><div class="sum-box-value a">${fmtCur(cotaTotal)}</div></div>
+            <div class="sum-box"><div class="sum-box-label">Parcela/mês</div><div class="sum-box-value">${fmtCur(famInstValue)}</div><div style="font-size:10px;color:#5a5a70;margin-top:2px;">${fmtCur(calc.valorParcelaCota)} × ${memberCount} membros</div></div>
+            <div class="sum-box"><div class="sum-box-label">Pago</div><div class="sum-box-value s">${fmtCur(st.totalPaid)}</div></div>
+            <div class="sum-box"><div class="sum-box-label">Restante</div><div class="sum-box-value ${remaining>0?'d':'s'}">${fmtCur(remaining)}</div></div>
+          </div>
+          <div style="font-size:11px;color:#5a5a70;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Parcelas (${calc.numParcelas}x de ${fmtCur(famInstValue)})</div>
+          <div class="installment-list">${(f.installments||[]).map((inst,i) => renderInstRow(inst, i, 'family', f.id)).join('')}</div>
+        </div>
+      </div>`;
+  } else {
+    // Individual: cada membro tem suas próprias parcelas
+    const allSt = membersList.map(m => calcInstallmentsStatus(m.installments));
+    const totalPaid = allSt.reduce((s,x)=>s+x.totalPaid,0);
+    const totalDue = allSt.reduce((s,x)=>s+x.totalDue,0);
+    const remaining = Math.max(0, totalDue - totalPaid);
+    const pct = totalDue>0?Math.min(100,(totalPaid/totalDue)*100):0;
+    const barC = pct>=100?'s':pct>0?'p':'d';
+    let status = 'Pendente';
+    if (totalPaid>=totalDue&&totalDue>0) status='Pago'; else if (totalPaid>0) status='Parcial';
+    const statusClass = status==='Pago'?'pill-paid':status==='Parcial'?'pill-partial':'pill-pending';
+    return `
+      <div class="member-card is-family">
+        <div class="member-header" onclick="toggleBody('familyInd','${f.id}')">
+          <div class="member-avatar fam">💜</div>
+          <div class="member-info">
+            <div class="member-name">${esc(f.name)} <span class="pill pill-family">núcleo · individual</span></div>
+            <div class="member-meta">${membersList.map(m=>esc(m.name)).join(', ')} · ${fmtCur(totalPaid)} pago de ${fmtCur(totalDue)}</div>
+            <div class="progress-wrap"><div class="progress-bar ${barC}" style="width:${pct}%"></div></div>
+          </div>
+          <span class="pill ${statusClass}">${status}</span>
+          <div class="member-actions" onclick="event.stopPropagation()">
+            <button class="btn btn-ghost btn-icon btn-sm" onclick="openFamilyModal('${f.id}')">✏️</button>
+            <button class="btn btn-danger btn-icon btn-sm" onclick="confirmDeleteFamily('${f.id}')">🗑</button>
+          </div>
+        </div>
+        <div class="member-body" id="body_familyInd_${f.id}">
+          ${membersList.map(m => `
+            <div style="margin-bottom:16px;">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <div class="member-avatar" style="width:28px;height:28px;font-size:11px;">${getInitials(m.name)}</div>
+                  <div>
+                    <div style="font-weight:600;font-size:13px;">${esc(m.name)}</div>
+                    <div style="font-size:11px;color:#5a5a70;">cota individual: ${fmtCur(calc.valorPorCota)}</div>
+                  </div>
+                </div>
+                <div style="display:flex;gap:4px;">
+                  <button class="btn btn-primary btn-xs" onclick="abrirPagarIntegrante('member','${m.id}')">+ Pagar</button>
+                  <button class="btn btn-ghost btn-icon btn-xs" onclick="openMemberModal('${m.id}')">✏️</button>
+                  <button class="btn btn-danger btn-icon btn-xs" onclick="confirmDeleteMember('${m.id}')">🗑</button>
+                </div>
+              </div>
+              <div class="installment-list">${(m.installments||[]).map((inst,i) => renderInstRow(inst, i, 'member', m.id)).join('')}</div>
+            </div>
+            <hr class="divider">
+          `).join('')}
+        </div>
+      </div>`;
+  }
+}
+
+/* ── RENDER MEMBER CARD (individual) ── */
+function renderMemberCard(m, g, calc, type) {
+  const st = calcInstallmentsStatus(m.installments);
+  const statusClass = st.status==='Quitado'?'pill-paid':st.status==='Em dia'?'pill-partial':st.status==='Vencido'?'pill-overdue':'pill-pending';
+  const pct = st.pct; const barC = pct>=100?'s':pct>0?'p':'d';
+  return `
+    <div class="member-card">
+      <div class="member-header" onclick="toggleBody('member','${m.id}')" role="button" tabindex="0">
+        <div class="member-avatar">${getInitials(m.name)}</div>
+        <div class="member-info">
+          <div class="member-name">${esc(m.name)}</div>
+          <div class="member-meta">
+            ${fmtCur(st.totalPaid)} pago de ${fmtCur(calc.valorPorCota)} · ${calc.numParcelas}x de ${fmtCur(calc.valorParcelaCota)}/mês
+            ${(() => { const hoje=new Date().toISOString().split('T')[0]; const vencidas=(m.installments||[]).filter(p=>{const vc=p.vencimento||p.due;return vc&&vc<hoje&&calcInstStatus(p).status!=='Pago';}).length; return vencidas>0?`<span class="overdue-badge">${vencidas} vencida${vencidas>1?'s':''}</span>`:''; })()}
+          </div>
+          <div class="progress-wrap"><div class="progress-bar ${barC}" style="width:${pct}%"></div></div>
+        </div>
+        <span class="pill ${statusClass}">${st.status}</span>
+        <div class="member-actions" onclick="event.stopPropagation()">
+          <button class="btn btn-primary btn-sm" onclick="abrirPagarIntegrante('member','${m.id}')">+ Pagar</button>
+          <button class="btn btn-ghost btn-icon btn-sm" onclick="openMemberModal('${m.id}')">✏️</button>
+          <button class="btn btn-danger btn-icon btn-sm" onclick="confirmDeleteMember('${m.id}')">🗑</button>
+        </div>
+      </div>
+      <div class="member-body" id="body_member_${m.id}">
+        <div class="summary-boxes">
+          <div class="sum-box"><div class="sum-box-label">Cota Total</div><div class="sum-box-value a">${fmtCur(calc.valorPorCota)}</div></div>
+          <div class="sum-box"><div class="sum-box-label">Parcela mensal</div><div class="sum-box-value">${fmtCur(calc.valorParcelaCota)}/mês</div></div>
+          <div class="sum-box"><div class="sum-box-label">Pago</div><div class="sum-box-value s">${fmtCur(st.totalPaid)}</div></div>
+          <div class="sum-box"><div class="sum-box-label">Restante</div><div class="sum-box-value ${st.remaining>0?'d':'s'}">${fmtCur(st.remaining)}</div></div>
+        </div>
+        <div style="font-size:11px;color:#5a5a70;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Parcelas (${calc.numParcelas}x de ${fmtCur(calc.valorParcelaCota)})</div>
+        <div class="installment-list">${(m.installments||[]).map((inst,i) => renderInstRow(inst, i, 'member', m.id)).join('')}</div>
+      </div>
+    </div>`;
+}
+
+/* ── RENDERIZA LINHA DE PARCELA ── */
+function renderInstRow(parcela, i, tipoAlvo, idAlvo) {
+  const { pago, devido, restante, status } = calcInstStatus(parcela);
+  const vencimento = parcela.vencimento || parcela.due || '';
+  const pagamentos = parcela.pagamentos || parcela.payments || [];
+  const hoje = new Date().toISOString().split('T')[0];
+  const vencida = vencimento && vencimento < hoje && status !== 'Pago';
+  const classeStatus = status==='Pago'?'pill-paid':status==='Parcial'?'pill-partial':'pill-pending';
+  const pct  = devido > 0 ? Math.min(100,(pago/devido)*100) : 0;
+  const barC = pct>=100?'s':pct>0?'p':'d';
+  const idCorpo = `instBody_${tipoAlvo}_${idAlvo}_${i}`;
+
+  const pagamentosHTML = pagamentos.map((pg, pi) => {
+    const valPg  = pg.valor  || pg.value    || 0;
+    const dataPg = pg.data   || pg.date     || '';
+    const arqPg  = pg.arquivo || pg.file    || null;
+    const nomePg = pg.nomeArquivo || pg.fileName || 'arquivo';
+    return `
+      <div class="payment-row">
+        <div class="payment-row-info">
+          <div class="payment-row-val text-s">${fmtCur(valPg)}</div>
+          <div class="payment-row-date">${fmtDate(dataPg)}</div>
+        </div>
+        ${arqPg ? (arqPg.startsWith('data:image')
+          ? `<img src="${arqPg}" class="thumb" onclick="viewImg('${arqPg}')">`
+          : `<div class="file-icon" title="${esc(nomePg)}">📄</div>`) : ''}
+        <button class="btn btn-secondary btn-icon btn-xs" title="Editar pagamento" onclick="openEditPayModal('${tipoAlvo}','${idAlvo}',${i},${pi})">✏️</button>
+        <button class="btn btn-danger btn-icon btn-xs" title="Excluir" onclick="confirmDeletePayment('${tipoAlvo}','${idAlvo}',${i},${pi})">✕</button>
+      </div>`;
+  }).join('');
+
+  return `
+    <div class="inst-row${vencida?' inst-overdue':''}">
+      <div class="inst-header" onclick="toggleInst('${idCorpo}')">
+        <div class="inst-number">
+          ${parcela.origemCaixa
+            ? `💰 Caixa <span class="overdue-badge" style="background:rgba(87,229,160,.15);color:#57e5a0;">EXTRA</span>`
+            : `Parcela ${i+1}${vencida?' <span class="overdue-badge">Vencida</span>':''}`
+          }
+        </div>
+        <div>
+          <div class="date-edit-wrap">
+            <input class="date-edit-input" type="date" value="${vencimento}"
+              onclick="event.stopPropagation()"
+              onchange="atualizarDataParcela('${tipoAlvo}','${idAlvo}',${i},this.value)"
+              title="Editar data da parcela">
+          </div>
+          <div class="progress-wrap" style="margin-top:4px;height:3px;width:130px;">
+            <div class="progress-bar ${barC}" style="width:${pct}%"></div>
+          </div>
+        </div>
+        <div class="inst-values">
+          <div>
+            <div class="inst-val full">${fmtCur(devido)}</div>
+            ${restante>0?`<div class="inst-val due">deve ${fmtCur(restante)}</div>`:''}
+          </div>
+          <span class="pill ${classeStatus}" style="font-size:10px;">${status}</span>
+          <button class="btn btn-primary btn-xs" onclick="event.stopPropagation();openPayModal('${tipoAlvo}','${idAlvo}',${i})">+ Pagar</button>
+        </div>
+      </div>
+      <div class="inst-body" id="${idCorpo}">
+        ${pago > 0 ? pagamentosHTML : `<div style="color:#5a5a70;font-size:12px;text-align:center;padding:8px;">Nenhum pagamento nesta parcela</div>`}
+      </div>
+    </div>`;
+}
+
+function atualizarDataParcela(tipoAlvo, idAlvo, idxParcela, valor) {
+  const g = getGroup(); if (!g) return;
+  let lista;
+  if (tipoAlvo==='member') { const m=g.members.find(x=>x.id===idAlvo); if(m) lista=m.installments; }
+  else { const f=(g.families||[]).find(x=>x.id===idAlvo); if(f) lista=f.installments; }
+  if (lista && lista[idxParcela]) {
+    lista[idxParcela].vencimento = valor;
+    lista[idxParcela].due = valor;
+    save();
+  }
+}
+
+/* ── HELPERS TOGGLES ── */
+function toggleBody(type, id) {
+  const el = document.getElementById(`body_${type}_${id}`);
+  if (el) el.classList.toggle('open');
+}
+function toggleInst(id) {
+  const el = document.getElementById(id);
+  if (el) el.classList.toggle('open');
+}
+function getNextOpenInst(targetType, targetId) {
+  const g = getGroup(); if (!g) return null;
+  let instList = [];
+  if (targetType==='member') { const m=g.members.find(x=>x.id===targetId); if(m) instList=m.installments||[]; }
+  else { const f=(g.families||[]).find(x=>x.id===targetId); if(f) instList=f.installments||[]; }
+  if (!instList.length) return null;
+  for (let i=0;i<instList.length;i++) { if (calcInstStatus(instList[i]).status!=='Pago') return i; }
+  return null; // todas pagas
+}
+
+/* ══════════════════════════════════════════════════════════
+   DESPESAS & CAIXA
+══════════════════════════════════════════════════════════ */
+
+/* ── CÁLCULOS CAIXA ── */
+function calcSaldoCaixa(grupo) {
+  const movimentos = grupo.caixa || [];
+  return movimentos.reduce((s, m) => {
+    const val = m.valor || 0;
+    return m.tipo === 'entrada' ? s + val : s - val;
+  }, 0);
+}
+
+/* ── CÁLCULOS DESPESAS ── */
+function calcTotalDespesas(grupo) {
+  const despesas    = grupo.despesas || [];
+  const totalValor  = despesas.reduce((s, d) => s + (d.valor || 0), 0);
+  const totalPago   = despesas.reduce((s, d) => {
+    return s + (d.rateios || []).reduce((sr, r) => sr + (r.pagamentos || []).reduce((sp, p) => sp + (p.valor || 0), 0), 0);
+  }, 0);
+  const totalRestante = Math.max(0, totalValor - totalPago);
+  return { totalValor, totalPago, totalRestante };
+}
+
+function calcRateioPorPessoa(despesa, grupo) {
+  // Rateio simples: valor total ÷ número de integrantes
+  const nInteg = (grupo.members || []).length;
+  return nInteg > 0 ? (despesa.valor || 0) / nInteg : 0;
+}
+
+function calcRestanteDespesa(despesa, grupo) {
+  const rateioPP  = calcRateioPorPessoa(despesa, grupo);
+  const nInteg    = (grupo.members || []).length;
+  const totalDevido = rateioPP * nInteg;
+  const rateios   = despesa.rateios || [];
+  const totalPago = rateios.reduce((s, r) => s + (r.pagamentos || []).reduce((sp, p) => sp + (p.valor || 0), 0), 0);
+  return Math.max(0, totalDevido - totalPago);
+}
+
+function statusDespesa(despesa, grupo) {
+  const rateioPP = calcRateioPorPessoa(despesa, grupo);
+  const nInteg   = (grupo.members || []).length;
+  if (nInteg === 0 || rateioPP === 0) return 'Pendente';
+  const rateios  = despesa.rateios || [];
+  const totalPago = rateios.reduce((s, r) => s + (r.pagamentos || []).reduce((sp, p) => sp + (p.valor || 0), 0), 0);
+  const totalDevido = rateioPP * nInteg;
+  if (totalPago >= totalDevido) return 'Pago';
+  if (totalPago > 0) return 'Parcial';
+  return 'Pendente';
+}
+
+function statusRateioIntegrante(rateio, rateioPP) {
+  const pago = (rateio.pagamentos || []).reduce((s, p) => s + (p.valor || 0), 0);
+  if (pago >= rateioPP && rateioPP > 0) return 'Pago';
+  if (pago > 0) return 'Parcial';
+  return 'Pendente';
+}
+
+/* ── RENDER DESPESAS ── */
+function renderDespesasCard(grupo) {
+  const despesas = grupo.despesas || [];
+  const totais   = calcTotalDespesas(grupo);
+  return `
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title"><div class="card-title-icon warn">🧾</div> Despesas</div>
+        <button class="btn btn-primary btn-sm" onclick="abrirModalDespesa()">+ Nova Despesa</button>
+      </div>
+      ${despesas.length > 0 ? `
+        <div class="summary-boxes" style="margin-bottom:16px;grid-template-columns:repeat(3,1fr);">
+          <div class="sum-box"><div class="sum-box-label">Total Despesas</div><div class="sum-box-value w">${fmtCur(totais.totalValor)}</div></div>
+          <div class="sum-box"><div class="sum-box-label">Total Pago</div><div class="sum-box-value s">${fmtCur(totais.totalPago)}</div></div>
+          <div class="sum-box"><div class="sum-box-label">Restante</div><div class="sum-box-value ${totais.totalRestante > 0 ? 'd' : 's'}">${fmtCur(totais.totalRestante)}</div></div>
+        </div>
+        ${despesas.map(d => renderDespesaItem(d, grupo)).join('')}
+      ` : `
+        <div style="text-align:center;padding:28px;color:#5a5a70;">
+          <div style="font-size:28px;margin-bottom:8px;">🧾</div>
+          <div style="font-size:13px;">Nenhuma despesa cadastrada</div>
+        </div>
+      `}
+    </div>`;
+}
+
+function renderDespesaItem(d, grupo) {
+  const status       = statusDespesa(d, grupo);
+  const classeStatus = status==='Pago'?'pill-paid':status==='Parcial'?'pill-partial':'pill-pending';
+  const rateioPP     = calcRateioPorPessoa(d, grupo);
+  const restante     = calcRestanteDespesa(d, grupo);
+  const origemCaixa  = d.origemCaixa || false;
+
+  const rateiosHTML = (grupo.members || []).map(m => {
+    const rateio = (d.rateios || []).find(r => r.memberId === m.id) || { memberId: m.id, pagamentos: [] };
+    const pago   = (rateio.pagamentos || []).reduce((s, p) => s + (p.valor || 0), 0);
+    const rest   = Math.max(0, rateioPP - pago);
+    const stR    = statusRateioIntegrante(rateio, rateioPP);
+    const clR    = stR==='Pago'?'pill-paid':stR==='Parcial'?'pill-partial':'pill-pending';
+    return `
+      <div class="rateio-item">
+        <div class="member-avatar" style="width:28px;height:28px;font-size:11px;flex-shrink:0;">${getInitials(m.name)}</div>
+        <div class="rateio-nome">${esc(m.name)}</div>
+        <div>
+          <div class="rateio-valor ${stR==='Pago'?'text-s':rest>0?'text-d':''}">${fmtCur(rateioPP)}</div>
+          ${rest > 0 ? `<div style="font-size:10px;color:#5a5a70;">deve ${fmtCur(rest)}</div>` : ''}
+        </div>
+        <span class="pill ${clR}" style="font-size:10px;">${stR}</span>
+        ${stR !== 'Pago' && rateioPP > 0 ? `<button class="btn btn-primary btn-xs" onclick="abrirPagDespesa('${d.id}','${m.id}')">+ Pagar</button>` : ''}
+      </div>
+      ${(rateio.pagamentos||[]).length > 0 ? `
+        <div style="margin-top:8px;display:flex;flex-direction:column;gap:4px;">
+          ${(rateio.pagamentos||[]).map((pg,pi) => `
+            <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:#9898b0;padding:4px 0;border-top:1px solid #2a2a38;">
+              <span style="color:#57e5a0;font-weight:600;">${fmtCur(pg.valor)}</span>
+              <span>${fmtDate(pg.data)}</span>
+              <button class="btn btn-ghost btn-icon btn-xs" style="margin-left:auto;" title="Editar" onclick="abrirEditPagDespesa('${d.id}','${m.id}',${pi})">✏️</button>
+            </div>`).join('')}
+        </div>` : ''}`;
+  }).join('');
+
+  return `
+    <div class="despesa-item">
+      <div class="despesa-header" onclick="toggleInst('despBody_${d.id}')" role="button" tabindex="0">
+        <div class="despesa-icon">🧾</div>
+        <div class="despesa-info">
+          <div class="despesa-nome">${esc(d.nome)}${origemCaixa ? ' <span style="font-size:10px;font-weight:700;background:rgba(87,229,160,.15);color:#57e5a0;border-radius:4px;padding:1px 6px;vertical-align:middle;">CAIXA</span>' : ''}</div>
+          <div class="despesa-meta">${fmtDate(d.data)}${d.obs ? ` · ${esc(d.obs)}` : ''}</div>
+        </div>
+        <div class="despesa-valor">${fmtCur(d.valor)}</div>
+        <span class="pill ${classeStatus}" style="flex-shrink:0;">${status}</span>
+        <div style="display:flex;gap:4px;flex-shrink:0;" onclick="event.stopPropagation()">
+          <button class="btn btn-ghost btn-icon btn-sm" onclick="abrirModalDespesa('${d.id}')">✏️</button>
+          <button class="btn btn-danger btn-icon btn-sm" onclick="excluirDespesa('${d.id}')">🗑</button>
+        </div>
+      </div>
+      <div class="despesa-body" id="despBody_${d.id}">
+        <div style="font-size:11px;color:#5a5a70;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">
+          Rateio: ${fmtCur(rateioPP)}/integrante · ${(grupo.members||[]).length} integrante(s)
+        </div>
+        <div class="rateio-lista">${rateiosHTML || '<div style="color:#5a5a70;font-size:12px;padding:8px;">Nenhum integrante cadastrado</div>'}</div>
+      </div>
+    </div>`;
+}
+
+/* ── RENDER CAIXA ── */
+function renderCaixaCard(grupo) {
+  const movimentos = grupo.caixa || [];
+  const saldo = calcSaldoCaixa(grupo);
+  const corSaldo = saldo > 0 ? '#57e5a0' : saldo < 0 ? '#ff5757' : '#5a5a70';
+
+  // Calcular saldo acumulado para cada transação (ordem cronológica)
+  let saldoAcum = 0;
+  const movimentosComSaldo = movimentos.map((m, i) => {
+    saldoAcum += m.tipo === 'entrada' ? (m.valor||0) : -(m.valor||0);
+    return { ...m, saldoApos: saldoAcum, idxReal: i };
+  });
+  const movimentosHTML = [...movimentosComSaldo].reverse().map((m) => {
+    const isEntrada = m.tipo === 'entrada';
+    const corSaldoApos = m.saldoApos >= 0 ? '#57e5a0' : '#ff5757';
+    return `
+      <div class="caixa-movim-item">
+        <div style="font-size:18px;">${isEntrada ? '💰' : '💸'}</div>
+        <div class="caixa-movim-info">
+          <div class="caixa-movim-desc">${esc(m.descricao || (isEntrada ? 'Entrada' : 'Saída'))}</div>
+          <div class="caixa-movim-data">${fmtDate(m.data)}</div>
+        </div>
+        <div style="text-align:right;">
+          <div class="caixa-movim-valor ${isEntrada ? 'entrada' : 'saida'}">${isEntrada ? '+' : '-'}${fmtCur(m.valor)}</div>
+          <div style="font-size:10px;color:${corSaldoApos};margin-top:2px;">saldo: ${fmtCur(m.saldoApos)}</div>
+        </div>
+        <button class="btn btn-danger btn-icon btn-xs" title="Excluir movimentação" onclick="excluirMovimentoCaixa(${m.idxReal})">✕</button>
+      </div>`;
+  }).join('');
+
+  return `
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title"><div class="card-title-icon info">💰</div> Caixa</div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-family btn-sm" onclick="abrirRatearCaixa()" title="Ratear valor do caixa como despesa entre todos os integrantes">💸 Ratear</button>
+          <button class="btn btn-secondary btn-sm" onclick="abrirModalCaixa()">+ Movimentação</button>
+        </div>
+      </div>
+      <div class="caixa-saldo-box">
+        <div>
+          <div style="font-size:11px;color:#5a5a70;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Saldo Atual</div>
+          <div class="caixa-saldo-valor" style="color:${corSaldo};">${fmtCur(saldo)}</div>
+        </div>
+        <div style="flex:1;"></div>
+        <div style="font-size:12px;color:#5a5a70;text-align:right;">
+          <div>Entradas: <strong style="color:#57e5a0;">${fmtCur(movimentos.filter(m=>m.tipo==='entrada').reduce((s,m)=>s+(m.valor||0),0))}</strong></div>
+          <div>Saídas: <strong style="color:#ff5757;">${fmtCur(movimentos.filter(m=>m.tipo==='saida').reduce((s,m)=>s+(m.valor||0),0))}</strong></div>
+          <div>${movimentos.length} movimentação(ões)</div>
+        </div>
+      </div>
+      ${movimentos.length > 0 ? `
+        <div style="font-size:11px;color:#5a5a70;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Histórico</div>
+        <div class="caixa-movim-lista">${movimentosHTML}</div>
+      ` : `<div style="text-align:center;padding:20px;color:#5a5a70;font-size:13px;">Nenhuma movimentação registrada</div>`}
+    </div>`;
+}
+
+/* ── AÇÕES DESPESAS ── */
+let editandoDespesaId = null;
+let pagDespesaCtx = null; // { despesaId, memberId }
+
+function abrirModalDespesa(editId) {
+  editandoDespesaId = editId || null;
+  const g = getGroup(); if (!g) return;
+  const d = editId ? (g.despesas || []).find(x => x.id === editId) : null;
+
+  document.getElementById('modalDespesaTitulo').textContent = d ? 'Editar Despesa' : 'Nova Despesa';
+  document.getElementById('inputDespesaNome').value  = d ? d.nome : '';
+  document.getElementById('inputDespesaData').value  = d ? (d.data || '') : new Date().toISOString().split('T')[0];
+  document.getElementById('inputDespesaObs').value   = d ? (d.obs  || '') : '';
+  if (d) setBRLField('inputDespesaValor', d.valor);
+  else   document.getElementById('inputDespesaValor').value = '';
+
+  atualizarPreviewRateio();
+  openModal('modalDespesa');
+}
+
+function atualizarPreviewRateio() {
+  const g = getGroup(); if (!g) return;
+  const valor  = readBRLField('inputDespesaValor');
+  const nInteg = (g.members || []).length;
+  const rateioPP = nInteg > 0 && valor > 0 ? valor / nInteg : 0;
+  const el = document.getElementById('previewRateio');
+  if (!valor) { el.textContent = 'Informe o valor para calcular o rateio'; return; }
+  if (nInteg === 0) { el.innerHTML = '<span style="color:#ffb347;">⚠️ Nenhum integrante cadastrado</span>'; return; }
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+      <span>Valor total:</span><strong>${fmtCur(valor)}</strong>
+    </div>
+    <div style="display:flex;justify-content:space-between;color:#c8ff57;border-top:1px solid #2a2a38;padding-top:6px;margin-top:2px;">
+      <span>Por integrante (${nInteg}):</span>
+      <strong style="font-family:'Segoe UI', system-ui, sans-serif;font-size:16px;">${fmtCur(rateioPP)}</strong>
+    </div>`;
+}
+
+function salvarDespesa() {
+  const g = getGroup(); if (!g) return;
+  const nome  = document.getElementById('inputDespesaNome').value.trim();
+  const valor = readBRLField('inputDespesaValor');
+  if (!nome)  { showToast('Descrição obrigatória', 'error'); return; }
+  if (!valor) { showToast('Valor obrigatório', 'error'); return; }
+
+  const data = document.getElementById('inputDespesaData').value;
+  const obs  = document.getElementById('inputDespesaObs').value.trim();
+
+  if (!g.despesas) g.despesas = [];
+
+  if (editandoDespesaId) {
+    const d = g.despesas.find(x => x.id === editandoDespesaId);
+    if (d) { d.nome = nome; d.valor = valor; d.data = data; d.obs = obs; garantirRateios(d, g); }
+  } else {
+    const novaDespesa = { id: uid(), nome, valor, data, obs, rateios: [] };
+    garantirRateios(novaDespesa, g);
+    g.despesas.push(novaDespesa);
+  }
+  save(); closeModal('modalDespesa'); renderMainContent();
+  showToast(editandoDespesaId ? 'Despesa atualizada' : 'Despesa adicionada', 'success');
+  editandoDespesaId = null;
+}
+
+function garantirRateios(despesa, grupo) {
+  // Garante que cada integrante tem uma entrada de rateio
+  if (!despesa.rateios) despesa.rateios = [];
+  (grupo.members || []).forEach(m => {
+    if (!despesa.rateios.find(r => r.memberId === m.id)) {
+      despesa.rateios.push({ memberId: m.id, pagamentos: [] });
+    }
+  });
+  // Remove rateios de membros que não existem mais
+  despesa.rateios = despesa.rateios.filter(r => (grupo.members || []).find(m => m.id === r.memberId));
+}
+
+function excluirDespesa(id) {
+  showConfirm('Excluir Despesa', 'Todos os pagamentos desta despesa serão perdidos.', () => {
+    const g = getGroup(); if (!g) return;
+    g.despesas = (g.despesas || []).filter(x => x.id !== id);
+    save(); renderMainContent(); showToast('Despesa excluída', 'success');
+  });
+}
+
+/* ── PAGAMENTO DE DESPESA POR INTEGRANTE ── */
+function abrirPagDespesa(despesaId, memberId) {
+  const g = getGroup(); if (!g) return;
+  const d = (g.despesas || []).find(x => x.id === despesaId);
+  const m = (g.members  || []).find(x => x.id === memberId);
+  if (!d || !m) return;
+  pagDespesaCtx = { despesaId, memberId };
+  const rateioPP = calcRateioPorPessoa(d, g);
+  const rateio   = (d.rateios || []).find(r => r.memberId === memberId) || { pagamentos: [] };
+  const pago     = (rateio.pagamentos || []).reduce((s, p) => s + (p.valor || 0), 0);
+  const rest     = Math.max(0, rateioPP - pago);
+  document.getElementById('infoPagDespesa').innerHTML = `
+    <strong>${esc(m.name)}</strong> · ${esc(d.nome)}<br>
+    Valor da cota: <strong>${fmtCur(rateioPP)}</strong><br>
+    Já pago: <strong class="text-s">${fmtCur(pago)}</strong> · Restante: <strong class="text-d">${fmtCur(rest)}</strong>`;
+  document.getElementById('inputPagDespesaValor').value = '';
+  document.getElementById('inputPagDespesaData').value = new Date().toISOString().split('T')[0];
+  openModal('modalPagDespesa');
+}
+
+function salvarPagamentoDespesa() {
+  if (!pagDespesaCtx) return;
+  const g = getGroup(); if (!g) return;
+  const v = readBRLField('inputPagDespesaValor');
+  if (!v || v <= 0) { showToast('Informe um valor válido', 'error'); return; }
+  const d = (g.despesas || []).find(x => x.id === pagDespesaCtx.despesaId);
+  if (!d) return;
+  if (!d.rateios) d.rateios = [];
+  let rateio = d.rateios.find(r => r.memberId === pagDespesaCtx.memberId);
+  if (!rateio) {
+    rateio = { memberId: pagDespesaCtx.memberId, pagamentos: [] };
+    d.rateios.push(rateio);
+  }
+  if (!rateio.pagamentos) rateio.pagamentos = [];
+  rateio.pagamentos.push({ id: uid(), valor: v, data: document.getElementById('inputPagDespesaData').value });
+  save(); closeModal('modalPagDespesa'); renderMainContent();
+  setTimeout(() => {
+    const el = document.getElementById(`despBody_${pagDespesaCtx.despesaId}`);
+    if (el) el.classList.add('open');
+  }, 60);
+  showToast('Pagamento registrado', 'success');
+  pagDespesaCtx = null;
+}
+
+/* ── EDIÇÃO DE PAGAMENTOS DE DESPESAS ── */
+let editPagDespesaCtx = null; // { despesaId, memberId, pagIdx }
+
+function abrirEditPagDespesa(despesaId, memberId, pagIdx) {
+  const g = getGroup(); if (!g) return;
+  const d = (g.despesas||[]).find(x=>x.id===despesaId);
+  const m = (g.members||[]).find(x=>x.id===memberId);
+  if (!d||!m) return;
+  const rateio = (d.rateios||[]).find(r=>r.memberId===memberId);
+  if (!rateio) return;
+  const p = rateio.pagamentos[pagIdx];
+  if (!p) return;
+  editPagDespesaCtx = { despesaId, memberId, pagIdx };
+  document.getElementById('infoEditPagDespesa').innerHTML =
+    `<strong>${esc(m.name)}</strong> · ${esc(d.nome)}<br>Pagamento original: <strong>${fmtCur(p.valor)}</strong> em ${fmtDate(p.data)}`;
+  setBRLField('inputEditPagDespesaValor', p.valor);
+  document.getElementById('inputEditPagDespesaData').value = p.data||'';
+  openModal('modalEditPagDespesa');
+}
+
+function salvarEdicaoPagDespesa() {
+  if (!editPagDespesaCtx) return;
+  const g = getGroup(); if (!g) return;
+  const v = readBRLField('inputEditPagDespesaValor');
+  if (!v||v<=0) { showToast('Informe um valor válido','error'); return; }
+  const d = (g.despesas||[]).find(x=>x.id===editPagDespesaCtx.despesaId);
+  if (!d) return;
+  const rateio = (d.rateios||[]).find(r=>r.memberId===editPagDespesaCtx.memberId);
+  if (!rateio) return;
+  const p = rateio.pagamentos[editPagDespesaCtx.pagIdx];
+  if (!p) return;
+  p.valor = v;
+  p.data = document.getElementById('inputEditPagDespesaData').value;
+  save(); closeModal('modalEditPagDespesa', true); renderMainContent();
+  setTimeout(()=>{ const el=document.getElementById(`despBody_${editPagDespesaCtx.despesaId}`); if(el)el.classList.add('open'); },60);
+  showToast('Pagamento atualizado','success');
+  editPagDespesaCtx = null;
+}
+
+function excluirPagamentoDespesaEdit() {
+  if (!editPagDespesaCtx) return;
+  closeModal('modalEditPagDespesa', true);
+  showConfirm('Excluir Pagamento','Deseja excluir este pagamento de despesa?', ()=>{
+    const g = getGroup(); if (!g) return;
+    const d = (g.despesas||[]).find(x=>x.id===editPagDespesaCtx.despesaId);
+    if (d) {
+      const rateio = (d.rateios||[]).find(r=>r.memberId===editPagDespesaCtx.memberId);
+      if (rateio) rateio.pagamentos.splice(editPagDespesaCtx.pagIdx,1);
+    }
+    save(); renderMainContent(); showToast('Pagamento excluído','success');
+    editPagDespesaCtx = null;
+  });
+}
+
+/* ── RATEAR DO CAIXA ── */
+function abrirRatearCaixa() {
+  const g = getGroup(); if (!g) return;
+  document.getElementById('inputRatearPorPessoa').value = '';
+  document.getElementById('inputRatearValor').value     = '';
+  document.getElementById('inputRatearData').value      = new Date().toISOString().split('T')[0];
+  document.getElementById('inputRatearDesc').value      = '';
+  document.getElementById('ratearAvulso').checked       = true;
+  document.getElementById('ratearMesesWrap').style.display = 'none';
+  document.getElementById('inputRatearMeses').value     = '3';
+  document.getElementById('previewRatearCaixa').innerHTML =
+    `<span style="color:#5a5a70;">Digite o valor por integrante para calcular o total e ver o breakdown.</span>`;
+  openModal('modalRatearCaixa');
+}
+
+function calcularTotalRatear() {
+  const g = getGroup(); if (!g) return;
+  const alvos = getAlvosPagamento(g);
+  const porPessoa = readBRLField('inputRatearPorPessoa');
+  if (!porPessoa || alvos.length === 0) {
+    document.getElementById('inputRatearValor').value = '';
+  } else {
+    // Soma de mult = número real de pessoas individuais
+    const totalIntegrantes = alvos.reduce((s, a) => s + (a.mult || 1), 0);
+    const total = Math.round(porPessoa * totalIntegrantes * 100) / 100;
+    setBRLField('inputRatearValor', total);
+  }
+  atualizarPreviewRatearCaixa();
+}
+
+function atualizarPreviewRatearCaixa() {
+  const g = getGroup(); if (!g) return;
+  const recorrente = document.getElementById('ratearRecorrente').checked;
+  document.getElementById('ratearMesesWrap').style.display = recorrente ? 'block' : 'none';
+
+  const meses = recorrente ? Math.max(1, parseInt(document.getElementById('inputRatearMeses').value)||1) : 1;
+  const el    = document.getElementById('previewRatearCaixa');
+  const alvos = getAlvosPagamento(g);
+
+  if (!alvos.length) {
+    el.innerHTML = '<span style="color:#ffb347;">⚠️ Nenhum integrante cadastrado</span>';
+    return;
+  }
+
+  // totalInteg = número real de pessoas (mult do núcleo unique = nº de membros)
+  const totalInteg = alvos.reduce((s, a) => s + (a.mult || 1), 0);
+  const nAlvos     = alvos.length;
+
+  const porPessoa = readBRLField('inputRatearPorPessoa');
+  const totalInput = readBRLField('inputRatearValor');
+
+  if (!porPessoa && !totalInput) {
+    el.innerHTML = '<span style="color:#5a5a70;">Digite o valor por integrante para calcular.</span>';
+    return;
+  }
+
+  const valorPorPessoa = porPessoa || Math.round((totalInput / totalInteg) * 100) / 100;
+  const valorTotal     = Math.round(valorPorPessoa * totalInteg * 100) / 100;
+
+  // Breakdown linha a linha por alvo
+  const linhasAlvos = alvos.map(a => {
+    const vAlvo = Math.round(valorPorPessoa * (a.mult || 1) * 100) / 100;
+    const label  = a.mult > 1 ? `${a.nome} (${a.mult} membros)` : a.nome;
+    return `<div style="display:flex;justify-content:space-between;font-size:12px;color:#9898b0;padding:3px 0;">
+      <span>${label}</span><strong>${fmtCur(vAlvo)}${meses > 1 ? '/mês' : ''}</strong>
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid #2a2a38;">
+      <span style="color:#c8ff57;font-weight:700;">Por integrante:</span>
+      <strong style="color:#c8ff57;font-size:16px;">${fmtCur(valorPorPessoa)}${meses > 1 ? '/mês' : ''}</strong>
+    </div>
+    ${linhasAlvos}
+    <div style="display:flex;justify-content:space-between;margin-top:8px;padding-top:8px;border-top:1px solid #2a2a38;font-weight:700;">
+      <span>Total arrecadado${meses > 1 ? ' × ' + meses + ' meses' : ''}:</span>
+      <strong>${fmtCur(Math.round(valorTotal * meses * 100) / 100)}</strong>
+    </div>
+    <div style="font-size:11px;color:#5a5a70;margin-top:6px;">
+      ${nAlvos} parcela(s) EXTRA${meses > 1 ? ' × ' + meses + ' meses' : ''} geradas · cada integrante/núcleo recebe a sua
+    </div>`;
+}
+
+// Retorna lista de alvos de pagamento: { tipo:'member'|'family', id, nome, valorMultiplicador }
+function getAlvosPagamento(g) {
+  const emNucleos = getMembersInFamilies(g);
+  const alvos = [];
+  // Membros individuais
+  (g.members||[]).filter(m => !emNucleos.has(m.id)).forEach(m => {
+    alvos.push({ tipo: 'member', id: m.id, nome: m.name, mult: 1 });
+  });
+  // Núcleos
+  (g.families||[]).forEach(f => {
+    if (f.mode === 'unique') {
+      const n = (f.memberIds||[]).length;
+      alvos.push({ tipo: 'family', id: f.id, nome: f.name, mult: n });
+    } else {
+      // Individual: cada membro do núcleo recebe sua parcela
+      (f.memberIds||[]).forEach(mid => {
+        const m = (g.members||[]).find(x=>x.id===mid);
+        if (m) alvos.push({ tipo: 'member', id: mid, nome: m.name, mult: 1 });
+      });
+    }
+  });
+  return alvos;
+}
+
+function salvarRatearCaixa() {
+  const g = getGroup(); if (!g) return;
+  // Usa o valor total calculado; recalcula se necessário
+  let valor = readBRLField('inputRatearValor');
+  if (!valor) {
+    const porPessoa = readBRLField('inputRatearPorPessoa');
+    const alvos2 = getAlvosPagamento(g);
+    if (porPessoa && alvos2.length) {
+      const totalMult = alvos2.reduce((s,a)=>s+(a.mult||1),0);
+      valor = Math.round(porPessoa * totalMult * 100) / 100;
+    }
+  }
+  const desc  = document.getElementById('inputRatearDesc').value.trim();
+  const data  = document.getElementById('inputRatearData').value;
+  const recorrente = document.getElementById('ratearRecorrente').checked;
+  const meses = recorrente ? Math.max(1, parseInt(document.getElementById('inputRatearMeses').value)||1) : 1;
+
+  if (!valor || valor <= 0) { showToast('Informe um valor válido', 'error'); return; }
+  if (!desc) { showToast('Descrição obrigatória', 'error'); return; }
+
+  const alvos = getAlvosPagamento(g);
+  if (!alvos.length) { showToast('Nenhum integrante cadastrado.', 'warn'); return; }
+
+  // porPessoa = valor digitado por integrante individual
+  const porPessoa = readBRLField('inputRatearPorPessoa') || (valor / alvos.reduce((s,a)=>s+(a.mult||1),0));
+
+  // Gerar datas de vencimento
+  const datasVenc = [];
+  const baseDate = data ? new Date(data + 'T00:00:00') : new Date();
+  for (let mes = 0; mes < meses; mes++) {
+    const d = new Date(baseDate.getFullYear(), baseDate.getMonth() + mes, baseDate.getDate());
+    datasVenc.push(d.toISOString().split('T')[0]);
+  }
+
+  let totalParcelas = 0;
+
+  // Adicionar parcelas a cada alvo
+  // Cada alvo recebe: porPessoa × mult (núcleo unique = nº membros, individual = 1)
+  alvos.forEach(alvo => {
+    const valorAlvo = Math.round(porPessoa * (alvo.mult || 1) * 100) / 100;
+    for (let mes = 0; mes < meses; mes++) {
+      const parcela = {
+        id: uid(),
+        vencimento: datasVenc[mes],
+        valorDevido: valorAlvo,
+        pagamentos: [],
+        origemCaixa: true,
+        descCaixa: desc
+      };
+      if (alvo.tipo === 'member') {
+        const membro = (g.members||[]).find(x => x.id === alvo.id);
+        if (membro) { if (!membro.installments) membro.installments = []; membro.installments.push(parcela); }
+      } else {
+        const familia = (g.families||[]).find(x => x.id === alvo.id);
+        if (familia) { if (!familia.installments) familia.installments = []; familia.installments.push(parcela); }
+      }
+      totalParcelas++;
+    }
+  });
+
+  save();
+  closeModal('modalRatearCaixa', true);
+  renderMainContent();
+  const nInteg = alvos.reduce((s,a)=>s+(a.mult||1),0);
+  showToast(`${totalParcelas} parcela(s) EXTRA geradas para ${nInteg} integrante(s)${meses>1?` × ${meses} meses`:''}.`, 'success');
+}
+
+/* ── AÇÕES CAIXA ── */
+function abrirModalCaixa() {
+  document.getElementById('inputCaixaTipo').value  = 'entrada';
+  document.getElementById('inputCaixaValor').value = '';
+  document.getElementById('inputCaixaData').value  = new Date().toISOString().split('T')[0];
+  document.getElementById('inputCaixaDesc').value  = '';
+  openModal('modalCaixa');
+}
+
+function salvarMovimentoCaixa() {
+  const g = getGroup(); if (!g) return;
+  const valor = readBRLField('inputCaixaValor');
+  if (!valor || valor <= 0) { showToast('Informe um valor válido', 'error'); return; }
+  const tipo = document.getElementById('inputCaixaTipo').value;
+  if (!g.caixa) g.caixa = [];
+  g.caixa.push({
+    id:        uid(),
+    tipo,
+    valor,
+    data:      document.getElementById('inputCaixaData').value,
+    descricao: document.getElementById('inputCaixaDesc').value.trim()
+  });
+  save(); closeModal('modalCaixa'); renderMainContent();
+  showToast(tipo === 'entrada' ? `Entrada de ${fmtCur(valor)} registrada` : `Saída de ${fmtCur(valor)} registrada`, 'success');
+}
+
+function excluirMovimentoCaixa(idx) {
+  showConfirm('Excluir Movimentação', 'Deseja remover esta movimentação do caixa?', () => {
+    const g = getGroup(); if (!g) return;
+    (g.caixa || []).splice(idx, 1);
+    save(); renderMainContent(); showToast('Movimentação removida', 'success');
+  });
+}
+
+function renderHistoryCard(g) {
+  const r = g.rental||{};
+  const refDate = r.referencia || r.refDate;
+  if (!refDate) return '';
+  const totais = calcGroupTotals(g);
+  const sc = totais.status==='Pago'?'pill-paid':totais.status==='Parcial'?'pill-partial':'pill-pending';
+  return `
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title"><div class="card-title-icon">📅</div> Histórico</div>
+      </div>
+      <div style="overflow-x:auto;">
+        <table class="history-table">
+          <thead><tr><th>Mês</th><th>Status</th><th>Pago</th><th>Restante</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>${fmtMonthYear(refDate)}</td>
+              <td><span class="pill ${sc}">${totais.status}</span></td>
+              <td class="text-s fw7">${fmtCur(totais.totalPaid)}</td>
+              <td class="text-d">${fmtCur(totais.remaining)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+/* ── FILE UPLOAD ── */
+function handleFile(inputId, previewId) {
+  const input = document.getElementById(inputId);
+  const previewEl = document.getElementById(previewId);
+  if (!input.files||!input.files[0]) return;
+  const file = input.files[0];
+  const reader = new FileReader();
+  reader.onload = e => {
+    tmpFiles[inputId] = {data:e.target.result,name:file.name};
+    const isImg = file.type.startsWith('image/');
+    previewEl.innerHTML = `<div class="file-preview-wrap">
+      ${isImg?`<img src="${e.target.result}" class="file-preview-img">`:`<div class="file-preview-name">📄 ${esc(file.name)}</div>`}
+      <button class="btn-remove-file" onclick="clearFile('${inputId}','${previewId}')">✕</button>
+    </div>`;
+  };
+  reader.readAsDataURL(file);
+}
+function clearFile(inputId, previewId) {
+  tmpFiles[inputId]=null;
+  document.getElementById(inputId).value='';
+  document.getElementById(previewId).innerHTML='';
+}
+function renderFilePreview(data, name) {
+  if (!data) return '';
+  if (data.startsWith('data:image')) return `<img src="${data}" class="file-preview-img" style="cursor:pointer;" onclick="viewImg('${data}')">`;
+  return `<div class="file-preview-name">📄 ${esc(name||'arquivo')}</div>`;
+}
+
+/* ── IMAGE VIEWER ── */
+function viewImg(src) {
+  document.getElementById('imgViewerSrc').src=src;
+  document.getElementById('imgViewer').classList.add('open');
+}
+function closeImgViewer() { document.getElementById('imgViewer').classList.remove('open'); }
+
+/* ── TOAST ── */
+function showToast(msg, type='success') {
+  const icons={success:'✅',error:'❌',warn:'⚠️',info:'💡'};
+  const el = document.createElement('div');
+  el.className=`toast ${type}`;
+  el.setAttribute('role','alert');
+  el.setAttribute('aria-live','polite');
+  el.innerHTML=`<span class="ti">${icons[type]||'ℹ️'}</span><span>${msg}</span>`;
+  document.getElementById('toastContainer').appendChild(el);
+  const tempo = type === 'error' ? 6000 : type === 'warn' ? 5000 : 3200;
+  setTimeout(()=>{ el.classList.add('out'); setTimeout(()=>el.remove(),350); }, tempo);
+}
+
+/* ── CONFIRM ── */
+function showConfirm(title, msg, cb) {
+  document.getElementById('confirmTitle').textContent=title;
+  document.getElementById('confirmMessage').textContent=msg;
+  confirmCb=cb;
+  document.getElementById('confirmBtn').onclick=()=>{ closeModal('modalConfirm'); if(confirmCb) confirmCb(); confirmCb=null; };
+  openModal('modalConfirm');
+}
+
+/* ── JSON ── */
+function exportJSON() {
+  const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download='aluguelPRO_backup.json'; a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+  showToast('JSON exportado','success');
+}
+function importJSON(event) {
+  const file = event.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (!data.groups) throw new Error('Formato inválido');
+      state = data;
+      load(); // migra campos antigos automaticamente
+      save(); renderGroupsList(); renderMainContent();
+      showToast('Dados importados com sucesso','success');
+    } catch { showToast('Arquivo inválido — verifique o formato','error'); }
+  };
+  reader.readAsText(file); event.target.value='';
+}
+
+/* ── PDF ── */
+function exportPDF() {
+  const g = getGroup();
+  if (!g) { showToast('Selecione um grupo','warn'); return; }
+
+  const calc   = calcGrupo(g);
+  const totals = calcGroupTotals(g);
+  const r      = g.rental || {};
+  const inFam  = getMembersInFamilies(g);
+  const refDate    = r.referencia || r.refDate || '';
+  const contratoArq = r.contratoArquivo || r.generalFile || null;
+  const dataEntrada = r.dataEntrada || '';
+  const dataSaida   = r.dataSaida   || '';
+  const contagem    = dataEntrada ? formatarContagem(dataEntrada, dataSaida) : null;
+
+  // ── helpers ──
+  const sec = (titulo) => `<h2>${esc(titulo)}</h2>`;
+  const rowH = (k, v) => `<div class="print-row"><span>${esc(k)}</span><strong>${esc(String(v))}</strong></div>`;
+  const badge = (s) => {
+    const cl = s==='Pago'?'pago':s==='Parcial'?'parcial':'pendente';
+    return `<span class="print-badge ${cl}">${s}</span>`;
+  };
+  const imgTag = (data, label) => {
+    if (!data || !data.startsWith('data:image')) return '';
+    return `<div class="print-img-wrap">${label?`<div style="font-size:10px;color:#666;margin-bottom:3px;">${esc(label)}</div>`:''}
+      <img src="${data}" alt="comprovante"></div>`;
+  };
+
+  // ── Parcelas HTML ──
+  const parcelas2html = (lista) => {
+    if (!lista || !lista.length) return '';
+    let rows = lista.map((inst, i) => {
+      const { pago, devido, restante, status } = calcInstStatus(inst);
+      const venc = inst.vencimento || inst.due || '';
+      const pagamentos = inst.pagamentos || inst.payments || [];
+      const pagsRows = pagamentos.map((p, pi) => {
+        const valP = p.valor || p.value || 0;
+        const datP = p.data  || p.date  || '';
+        const arqP = p.arquivo || p.file || null;
+        return `<tr style="background:#f9fff4;">
+          <td style="padding-left:24px;">→ Pgto ${pi+1}</td>
+          <td>${fmtDate(datP)}</td>
+          <td>${fmtCur(valP)}</td>
+          <td>—</td>
+          <td>${arqP ? imgTag(arqP,'') : '—'}</td>
+        </tr>`;
+      }).join('');
+      return `<tr>
+        <td><strong>Parcela ${i+1}</strong></td>
+        <td>${shortDate(venc)}</td>
+        <td>${fmtCur(devido)}</td>
+        <td>${fmtCur(restante)}</td>
+        <td>${badge(status)}</td>
+      </tr>${pagsRows}`;
+    }).join('');
+    return `<table>
+      <thead><tr><th>Parcela</th><th>Vencimento</th><th>Valor</th><th>Restante</th><th>Status</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+  };
+
+  // ── Monta HTML ──
+  let html = `
+    <div style="background:#1e1e27;color:#c8ff57;padding:12px 16px;border-radius:6px;margin-bottom:16px;">
+      <h1 style="font-size:20px;font-weight:800;margin:0;">🏠 AluguelPRO — Relatório</h1>
+      <p style="margin:4px 0 0;font-size:13px;color:#9898b0;">${esc(g.name)} · ${esc(g.type)} · Gerado em ${new Date().toLocaleDateString('pt-BR')}</p>
+    </div>`;
+
+  // Capa info
+  html += `<div class="print-section">`;
+  if (refDate) html += rowH('Referência', fmtMonthYear(refDate));
+  if (r.endereco) html += rowH('Endereço', r.endereco);
+  if (r.url) html += rowH('URL', r.url);
+  if (dataEntrada) html += rowH('Entrada', fmtDate(dataEntrada) + (dataSaida ? ' · Saída: ' + fmtDate(dataSaida) : ''));
+  if (contagem) html += rowH('Tempo no imóvel', contagem.texto);
+  if (r.observacoes) html += rowH('Observações', r.observacoes);
+  html += `</div>`;
+
+  // Contrato
+  if (contratoArq) {
+    html += sec('CONTRATO DA CASA');
+    html += `<div class="print-section">${imgTag(contratoArq, 'Contrato da Casa')}</div>`;
+  }
+
+  // Dados aluguel
+  html += sec('DADOS DO ALUGUEL');
+  html += `<div class="print-section">`;
+  html += rowH('Valor do Aluguel', fmtCur(calc.aluguel));
+  html += rowH('Patrocínio/Desconto', fmtCur(calc.patrocinio));
+  html += rowH('Valor Final', fmtCur(calc.totalFinal));
+  html += rowH('Integrantes', calc.cotas);
+  html += rowH('Por Integrante', fmtCur(calc.valorPorCota));
+  html += rowH('Parcelamento', `${calc.numParcelas}x de ${fmtCur(calc.valorParcelaTotal)}`);
+  html += rowH('Parcela/pessoa', `${fmtCur(calc.valorParcelaCota)}/mês`);
+  html += rowH('Dia de Vencimento', (r.diaVencimento||r.dueDay) ? 'Dia ' + (r.diaVencimento||r.dueDay) : '—');
+  html += rowH('Total Pago', fmtCur(totals.totalPaid));
+  html += rowH('Restante', fmtCur(totals.remaining));
+  html += rowH('Status', totals.status);
+  html += `</div>`;
+
+  // Núcleos
+  (g.families||[]).forEach(f => {
+    const mems = (g.members||[]).filter(m => (f.memberIds||[]).includes(m.id));
+    html += sec(`NÚCLEO: ${f.name.toUpperCase()} (${f.mode==='unique'?'PAGAMENTO ÚNICO':'INDIVIDUAL'})`);
+    html += `<div class="print-section">`;
+    html += rowH('Membros', mems.map(m=>m.name).join(', '));
+    if (f.mode === 'unique') {
+      const st = calcInstallmentsStatus(f.installments);
+      const famInst = calc.valorParcelaCota * mems.length;
+      html += rowH('Cota do Núcleo', fmtCur(calc.valorPorCota * mems.length));
+      html += rowH('Parcela do Núcleo', `${fmtCur(famInst)}/mês (${fmtCur(calc.valorParcelaCota)} × ${mems.length})`);
+      html += rowH('Pago', fmtCur(st.totalPaid));
+      html += rowH('Restante', fmtCur(st.remaining));
+      html += rowH('Status', st.status);
+      html += parcelas2html(f.installments);
+    } else {
+      mems.forEach(m => {
+        const st = calcInstallmentsStatus(m.installments);
+        html += `<h3>${esc(m.name)}</h3>`;
+        html += rowH('Pago', fmtCur(st.totalPaid));
+        html += rowH('Restante', fmtCur(st.remaining));
+        html += rowH('Status', st.status);
+        html += parcelas2html(m.installments);
+      });
+    }
+    html += `</div>`;
+  });
+
+  // Individuais
+  const individuais = (g.members||[]).filter(m => !inFam.has(m.id));
+  if (individuais.length) {
+    html += sec('INTEGRANTES INDIVIDUAIS');
+    individuais.forEach(m => {
+      const st = calcInstallmentsStatus(m.installments);
+      html += `<div class="print-section">`;
+      html += `<h3>${esc(m.name)}</h3>`;
+      html += rowH('Cota Total', fmtCur(calc.valorPorCota));
+      html += rowH('Parcela/mês', fmtCur(calc.valorParcelaCota));
+      html += rowH('Pago', fmtCur(st.totalPaid));
+      html += rowH('Restante', fmtCur(st.remaining));
+      html += rowH('Status', st.status);
+      html += parcelas2html(m.installments);
+      html += `</div>`;
+    });
+  }
+
+  // Despesas
+  const despesas = g.despesas || [];
+  if (despesas.length) {
+    html += sec('DESPESAS');
+    const totD = calcTotalDespesas(g);
+    html += `<div class="print-section">`;
+    html += rowH('Total Despesas', fmtCur(totD.totalValor));
+    html += rowH('Total Pago', fmtCur(totD.totalPago));
+    html += rowH('Restante', fmtCur(totD.totalRestante));
+    html += `<table style="margin-top:8px;">
+      <thead><tr><th>Descrição</th><th>Data</th><th>Valor</th><th>Por Pessoa</th><th>Status</th></tr></thead>
+      <tbody>`;
+    despesas.forEach(d => {
+      const st  = statusDespesa(d, g);
+      const rPP = calcRateioPorPessoa(d, g);
+      html += `<tr>
+        <td>${esc(d.nome)}${d.obs?`<br><small style="color:#666;">${esc(d.obs)}</small>`:''}
+        </td>
+        <td>${fmtDate(d.data)}</td>
+        <td>${fmtCur(d.valor)}</td>
+        <td>${fmtCur(rPP)}</td>
+        <td>${badge(st)}</td>
+      </tr>`;
+    });
+    html += `</tbody></table></div>`;
+  }
+
+  // Caixa
+  const movimentos = g.caixa || [];
+  if (movimentos.length) {
+    const saldo = calcSaldoCaixa(g);
+    html += sec('CAIXA');
+    html += `<div class="print-section">`;
+    html += rowH('Saldo Atual', fmtCur(saldo));
+    html += `<table style="margin-top:8px;">
+      <thead><tr><th>Tipo</th><th>Descrição</th><th>Data</th><th>Valor</th></tr></thead>
+      <tbody>`;
+    movimentos.forEach(m => {
+      html += `<tr>
+        <td>${m.tipo==='entrada'?'💰 Entrada':'💸 Saída'}</td>
+        <td>${esc(m.descricao||'—')}</td>
+        <td>${fmtDate(m.data)}</td>
+        <td style="color:${m.tipo==='entrada'?'#1a7a4a':'#9b1c1c'};font-weight:700;">${m.tipo==='entrada'?'+':'-'}${fmtCur(m.valor)}</td>
+      </tr>`;
+    });
+    html += `</tbody></table></div>`;
+  }
+
+  // Injetar e imprimir
+  const printArea = document.getElementById('printArea');
+  printArea.innerHTML = html;
+  showToast('Diálogo de impressão aberto. Selecione "Salvar como PDF" como destino.','info');
+  setTimeout(() => {
+    window.print();
+    setTimeout(() => { printArea.innerHTML = ''; }, 1000);
+  }, 300);
+}
+
+/* ── MOBILE ── */
+function toggleMobileSidebar() {
+  document.getElementById('sidebar').classList.toggle('mobile-open');
+  document.getElementById('sidebarOverlay').classList.toggle('active');
+}
+function closeMobileSidebar() {
+  document.getElementById('sidebar').classList.remove('mobile-open');
+  document.getElementById('sidebarOverlay').classList.remove('active');
+}
+
+/* ── BOOT ── */
+(function iniciar() {
+  // Mostrar indicador de carregamento imediatamente
+  const dbg = document.createElement('div');
+  dbg.id = '_dbg';
+  dbg.style.cssText = 'position:fixed;bottom:10px;right:10px;background:#1e1e27;color:#c8ff57;padding:8px 12px;border-radius:8px;font-size:12px;z-index:99999;font-family:monospace;border:1px solid #33334a;';
+  dbg.textContent = 'Iniciando...';
+  document.body.appendChild(dbg);
+
+  const step = (msg) => { dbg.textContent = msg; };
+
+  try {
+    step('Carregando dados...');
+    load();
+    step('Renderizando grupos...');
+    renderGroupsList();
+    step('Renderizando conteúdo...');
+    renderMainContent();
+    step('OK ✓');
+    setTimeout(() => { if (dbg.parentNode) dbg.parentNode.removeChild(dbg); }, 2000);
+  } catch(e) {
+    dbg.style.background = '#ff5757';
+    dbg.style.color = '#fff';
+    dbg.textContent = 'ERRO: ' + e.message;
+
+    document.getElementById('groupContent').classList.remove('hidden');
+    document.getElementById('emptyState').classList.add('hidden');
+    document.getElementById('groupContent').innerHTML = `
+      <div style="padding:40px;text-align:center;">
+        <div style="font-size:40px;margin-bottom:16px;">⚠️</div>
+        <div style="font-size:16px;font-weight:700;color:#ff5757;margin-bottom:8px;">Erro ao inicializar</div>
+        <div style="font-size:12px;color:#9898b0;background:#1e1e27;padding:12px;border-radius:8px;margin-bottom:16px;text-align:left;word-break:break-all;">${esc(e.stack||e.message)}</div>
+        <button onclick="location.reload()" style="background:#c8ff57;color:#0f0f12;border:none;padding:10px 20px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">🔄 Recarregar</button>
+      </div>`;
+    console.error('AluguelPRO boot error:', e);
+  }
+})();
+</script>
+</body>
+</html>
