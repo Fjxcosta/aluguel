@@ -2359,20 +2359,57 @@ function renderDespesaItem(d, grupo) {
 }
 
 /* ── RENDER CAIXA ── */
-function renderCaixaCard(grupo) {
-  const movimentos = grupo.caixa || [];
-  const saldo = calcSaldoCaixa(grupo);
-  const corSaldo = saldo > 0 ? '#57e5a0' : saldo < 0 ? '#ff5757' : '#5a5a70';
+function calcExtrasCaixa(grupo) {
+  // Calcula totais das parcelas extras geradas pelo Ratear
+  const emNucleos = getMembersInFamilies(grupo);
+  let totalDevido = 0, totalRecebido = 0;
+  const pendentes = []; // lista de extras pendentes para exibir
 
-  // Calcular saldo acumulado para cada transação (ordem cronológica)
+  const processarLista = (installments, nomeTitular) => {
+    (installments||[]).filter(p => p.origemCaixa).forEach(p => {
+      const dev  = Math.round((p.valorDevido || 0) * 100) / 100;
+      const pago = Math.round((p.pagamentos||[]).reduce((s,pg)=>s+(pg.valor||0),0) * 100) / 100;
+      totalDevido   += dev;
+      totalRecebido += pago;
+      if (pago < dev - 0.01) {
+        pendentes.push({
+          nome:       nomeTitular,
+          descricao:  p.descCaixa || 'Extra',
+          vencimento: p.vencimento || '',
+          valorDevido: dev,
+          pago,
+          restante:   Math.max(0, dev - pago)
+        });
+      }
+    });
+  };
+
+  (grupo.members||[]).forEach(m => processarLista(m.installments, m.name));
+  (grupo.families||[]).forEach(f => {
+    if (f.mode === 'unique') processarLista(f.installments, f.name);
+  });
+
+  return { totalDevido, totalRecebido, totalPendente: Math.max(0, totalDevido - totalRecebido), pendentes };
+}
+
+function renderCaixaCard(grupo) {
+  const movimentos  = grupo.caixa || [];
+  const saldo       = calcSaldoCaixa(grupo);
+  const extras      = calcExtrasCaixa(grupo);
+  const corSaldo    = saldo > 0 ? '#57e5a0' : saldo < 0 ? '#ff5757' : '#5a5a70';
+  const totalEntradas = movimentos.filter(m=>m.tipo==='entrada').reduce((s,m)=>s+(m.valor||0),0);
+  const totalSaidas   = movimentos.filter(m=>m.tipo==='saida').reduce((s,m)=>s+(m.valor||0),0);
+
+  // Histórico de movimentações manuais com saldo acumulado
   let saldoAcum = 0;
   const movimentosComSaldo = movimentos.map((m, i) => {
     saldoAcum += m.tipo === 'entrada' ? (m.valor||0) : -(m.valor||0);
     return { ...m, saldoApos: saldoAcum, idxReal: i };
   });
-  const movimentosHTML = [...movimentosComSaldo].reverse().map((m) => {
-    const isEntrada = m.tipo === 'entrada';
-    const corSaldoApos = m.saldoApos >= 0 ? '#57e5a0' : '#ff5757';
+
+  const movimentosHTML = [...movimentosComSaldo].reverse().map(m => {
+    const isEntrada  = m.tipo === 'entrada';
+    const corApos    = m.saldoApos >= 0 ? '#57e5a0' : '#ff5757';
     return `
       <div class="caixa-movim-item">
         <div style="font-size:18px;">${isEntrada ? '💰' : '💸'}</div>
@@ -2381,38 +2418,81 @@ function renderCaixaCard(grupo) {
           <div class="caixa-movim-data">${fmtDate(m.data)}</div>
         </div>
         <div style="text-align:right;">
-          <div class="caixa-movim-valor ${isEntrada ? 'entrada' : 'saida'}">${isEntrada ? '+' : '-'}${fmtCur(m.valor)}</div>
-          <div style="font-size:10px;color:${corSaldoApos};margin-top:2px;">saldo: ${fmtCur(m.saldoApos)}</div>
+          <div class="caixa-movim-valor ${isEntrada?'entrada':'saida'}">${isEntrada?'+':'-'}${fmtCur(m.valor)}</div>
+          <div style="font-size:10px;color:${corApos};margin-top:2px;">saldo: ${fmtCur(m.saldoApos)}</div>
         </div>
-        <button class="btn btn-danger btn-icon btn-xs" title="Excluir movimentação" onclick="excluirMovimentoCaixa(${m.idxReal})">✕</button>
+        <button class="btn btn-danger btn-icon btn-xs" title="Excluir" onclick="excluirMovimentoCaixa(${m.idxReal})">✕</button>
       </div>`;
   }).join('');
+
+  // Parcelas extras pendentes (a receber)
+  const pendentesHTML = extras.pendentes.length > 0 ? extras.pendentes.map(p => `
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:#1e1e27;border:1px solid rgba(255,179,71,.2);border-radius:8px;margin-bottom:6px;">
+      <div style="font-size:16px;">⏳</div>
+      <div style="flex:1;">
+        <div style="font-size:13px;color:#9898b0;font-weight:500;">${esc(p.nome)} <span style="font-size:11px;color:#5a5a70;">· ${esc(p.descricao)}</span></div>
+        <div style="font-size:11px;color:#5a5a70;">Vence: ${fmtDate(p.vencimento)} · Pago: ${fmtCur(p.pago)}</div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:14px;font-weight:700;color:#ffb347;">${fmtCur(p.restante)}</div>
+        <div style="font-size:10px;color:#5a5a70;">a receber</div>
+      </div>
+    </div>`).join('') : '';
+
+  const temExtras = extras.totalDevido > 0;
 
   return `
     <div class="card">
       <div class="card-header">
         <div class="card-title"><div class="card-title-icon info">💰</div> Caixa</div>
         <div style="display:flex;gap:8px;">
-          <button class="btn btn-family btn-sm" onclick="abrirRatearCaixa()" title="Ratear valor do caixa como despesa entre todos os integrantes">💸 Ratear</button>
+          <button class="btn btn-family btn-sm" onclick="abrirRatearCaixa()" title="Gerar parcelas extras para os integrantes">💸 Ratear</button>
           <button class="btn btn-secondary btn-sm" onclick="abrirModalCaixa()">+ Movimentação</button>
         </div>
       </div>
+
+      <!-- Saldo e resumo -->
       <div class="caixa-saldo-box">
         <div>
           <div style="font-size:11px;color:#5a5a70;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Saldo Atual</div>
           <div class="caixa-saldo-valor" style="color:${corSaldo};">${fmtCur(saldo)}</div>
         </div>
         <div style="flex:1;"></div>
-        <div style="font-size:12px;color:#5a5a70;text-align:right;">
-          <div>Entradas: <strong style="color:#57e5a0;">${fmtCur(movimentos.filter(m=>m.tipo==='entrada').reduce((s,m)=>s+(m.valor||0),0))}</strong></div>
-          <div>Saídas: <strong style="color:#ff5757;">${fmtCur(movimentos.filter(m=>m.tipo==='saida').reduce((s,m)=>s+(m.valor||0),0))}</strong></div>
-          <div>${movimentos.length} movimentação(ões)</div>
+        <div style="font-size:12px;color:#5a5a70;text-align:right;line-height:1.8;">
+          <div>Entradas: <strong style="color:#57e5a0;">${fmtCur(totalEntradas + extras.totalRecebido)}</strong></div>
+          <div>Saídas: <strong style="color:#ff5757;">${fmtCur(totalSaidas)}</strong></div>
+          ${movimentos.length > 0 ? `<div>${movimentos.length} movimentação(ões) manual(ais)</div>` : ''}
         </div>
       </div>
+
+      ${temExtras ? `
+      <!-- Parcelas extras (Ratear) -->
+      <div style="margin-bottom:16px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+          <div style="font-size:11px;color:#ffb347;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">
+            💸 Parcelas Extras (Ratear)
+          </div>
+          <div style="font-size:12px;color:#5a5a70;">
+            Recebido: <strong style="color:#57e5a0;">${fmtCur(extras.totalRecebido)}</strong>
+            · A receber: <strong style="color:#ffb347;">${fmtCur(extras.totalPendente)}</strong>
+          </div>
+        </div>
+        ${extras.pendentes.length > 0
+          ? pendentesHTML
+          : `<div style="padding:10px;text-align:center;color:#57e5a0;font-size:13px;">✅ Todas as parcelas extras foram pagas</div>`
+        }
+      </div>` : ''}
+
+      <!-- Histórico de movimentações manuais -->
       ${movimentos.length > 0 ? `
-        <div style="font-size:11px;color:#5a5a70;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Histórico</div>
+        <div style="font-size:11px;color:#5a5a70;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Histórico de Movimentações</div>
         <div class="caixa-movim-lista">${movimentosHTML}</div>
-      ` : `<div style="text-align:center;padding:20px;color:#5a5a70;font-size:13px;">Nenhuma movimentação registrada</div>`}
+      ` : temExtras ? '' : `
+        <div style="text-align:center;padding:20px;color:#5a5a70;font-size:13px;">
+          <div style="font-size:24px;margin-bottom:8px;">💰</div>
+          <div>Nenhuma movimentação ainda</div>
+          <div style="font-size:12px;margin-top:4px;">Use <strong>Ratear</strong> para gerar cobranças ou <strong>+ Movimentação</strong> para lançar entradas e saídas</div>
+        </div>`}
     </div>`;
 }
 
