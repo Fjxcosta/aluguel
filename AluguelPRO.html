@@ -903,20 +903,8 @@ function save() {
   }
 }
 
-function load() {
-  try {
-    const raw = _store.getItem(STORE_KEY)
-             || _store.getItem('aluguelPRO_v3')
-             || _store.getItem('aluguelPRO_v2');
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed && parsed.groups) state = parsed;
-    }
-  } catch(e) {
-    console.warn('AluguelPRO: erro ao carregar dados salvos', e);
-  }
-
-  // Garante estrutura mínima em todos os grupos
+function migrarDados() {
+  // Garante estrutura mínima e migra campos antigos (inglês→português) em todos os grupos
   state.groups.forEach(g => {
     if (!g.families)  g.families  = [];
     if (!g.despesas)  g.despesas  = [];
@@ -969,6 +957,21 @@ function load() {
       });
     });
   });
+}
+
+function load() {
+  try {
+    const raw = _store.getItem(STORE_KEY)
+             || _store.getItem('aluguelPRO_v3')
+             || _store.getItem('aluguelPRO_v2');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.groups) state = parsed;
+    }
+  } catch(e) {
+    console.warn('AluguelPRO: erro ao carregar dados salvos', e);
+  }
+  migrarDados();
 }
 
 /* ── UTILS ── */
@@ -2902,10 +2905,18 @@ function importJSON(event) {
       const data = JSON.parse(e.target.result);
       if (!data.groups) throw new Error('Formato inválido');
       state = data;
-      load(); // migra campos antigos automaticamente
+      migrarDados(); // migra campos antigos sem sobrescrever com localStorage
       save(); renderGroupsList(); renderMainContent();
-      showToast('Dados importados com sucesso','success');
-    } catch { showToast('Arquivo inválido — verifique o formato','error'); }
+      // Selecionar o primeiro grupo automaticamente se existir
+      if (state.groups.length > 0 && !state.activeGroup) {
+        state.activeGroup = state.groups[0].id;
+        renderGroupsList(); renderMainContent();
+      }
+      showToast(`Dados importados: ${state.groups.length} grupo(s)`, 'success');
+    } catch(err) {
+      console.error('importJSON error:', err);
+      showToast('Arquivo inválido — verifique o formato', 'error');
+    }
   };
   reader.readAsText(file); event.target.value='';
 }
