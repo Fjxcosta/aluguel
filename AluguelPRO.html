@@ -23,6 +23,7 @@
   --c-danger:    #ff5757;
   --c-warn:      #ffb347;
   --c-success:   #57e5a0;
+  --c-info:      #57b8ff;
   --c-family:    #b57aff;
   --r-sm:    8px;
   --r-md:   12px;
@@ -357,9 +358,54 @@ body {
   #printArea .no-print { display: none; }
   @page { margin: 15mm; }
 }
+
+/* ── LOGIN / SESSÃO ── */
+#authGate {
+  position: fixed; inset: 0; z-index: 9000;
+  background: #0f0f12;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+}
+#authGate.hidden { display: none; }
+.auth-card {
+  width: 100%; max-width: 380px;
+  background: #17171d; border: 1px solid #2a2a38; border-radius: 18px;
+  padding: 32px 28px; box-shadow: 0 4px 24px rgba(0,0,0,.4);
+}
+.auth-logo { font-size: 22px; font-weight: 800; letter-spacing: -.5px; display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+.auth-logo span { background: #c8ff57; color: #0f0f12; border-radius: 6px; padding: 2px 7px; font-size: 11px; font-weight: 700; letter-spacing: 1px; }
+.auth-sub { color: #9898b0; font-size: 13px; margin-bottom: 24px; }
+.auth-card .form-group { margin-bottom: 14px; }
+.auth-error { color: #ff5757; font-size: 13px; margin-top: 4px; min-height: 18px; }
+.auth-status { font-size: 11px; color: #5a5a70; margin-top: 18px; text-align: center; line-height: 1.5; }
+.conn-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; letter-spacing: .5px; padding: 4px 10px; border-radius: 99px; }
+.conn-pill .dot { width: 7px; height: 7px; border-radius: 50%; }
+.conn-online  { background: rgba(87,229,160,.12); color: #57e5a0; } .conn-online .dot { background: #57e5a0; }
+.conn-offline { background: rgba(255,179,71,.12); color: #ffb347; } .conn-offline .dot { background: #ffb347; }
+.conn-error   { background: rgba(255,87,87,.12);  color: #ff5757; } .conn-error .dot { background: #ff5757; }
+.session-timer { font-size: 11px; color: #5a5a70; font-variant-numeric: tabular-nums; }
 </style>
 </head>
 <body>
+
+<!-- ── PORTÃO DE LOGIN ── -->
+<div id="authGate">
+  <div class="auth-card">
+    <div class="auth-logo">🏠 AluguelPRO <span>PRO</span></div>
+    <div class="auth-sub">Entre para acessar os dados compartilhados.</div>
+    <div class="form-group">
+      <label class="form-label" for="authUser">Usuária</label>
+      <input class="form-input" id="authUser" type="text" autocomplete="username" placeholder="usuária" />
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="authPass">Senha</label>
+      <input class="form-input" id="authPass" type="password" autocomplete="current-password" placeholder="senha" />
+    </div>
+    <div class="auth-error" id="authError"></div>
+    <button class="btn btn-primary" id="authBtn" style="width:100%;margin-top:6px;">Entrar</button>
+    <div class="auth-status" id="authStatus"></div>
+  </div>
+</div>
 
 <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeMobileSidebar()"></div>
 <div class="app-shell">
@@ -373,11 +419,16 @@ body {
     <div style="height:1px;background:#2a2a38;margin:4px 12px;"></div>
     <button type="button" class="btn-add-group" onclick="openGroupModal()">+ Novo Grupo</button>
     <div class="sidebar-footer">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:4px 10px 8px;">
+        <span class="conn-pill conn-offline" id="connPill"><span class="dot"></span><span id="connText">LOCAL</span></span>
+        <span class="session-timer" id="sessionTimer"></span>
+      </div>
       <button type="button" class="sidebar-action" onclick="exportJSON()">📤 Exportar JSON</button>
       <label class="sidebar-action" style="cursor:pointer;">📥 Importar JSON
         <input type="file" accept=".json" style="display:none" onchange="importJSON(event)">
       </label>
       <button type="button" class="sidebar-action danger" onclick="confirmClearAll()">🗑 Limpar Tudo</button>
+      <button type="button" class="sidebar-action danger" onclick="appLogout('manual')">🚪 Sair</button>
     </div>
   </aside>
 
@@ -838,6 +889,8 @@ body {
   </div>
 </div>
 
+<!-- Biblioteca Supabase (cliente JS) -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script>
 /* ══════════════════════════════════════════════════════════
    ESTADO
@@ -876,6 +929,14 @@ const _store = (() => {
 })();
 
 function save() {
+  saveLocal();
+  // Qualquer alteração de dados conta como atividade (mantém a sessão viva)
+  markActivity();
+  // Replica para a nuvem (debounced) se houver sessão ativa
+  scheduleCloudPush();
+}
+
+function saveLocal() {
   try {
     // Salva em partes se necessário (comprovantes base64 são grandes)
     const json = JSON.stringify(state);
@@ -973,6 +1034,310 @@ function load() {
   }
   migrarDados();
 }
+
+/* ══════════════════════════════════════════════════════════
+   NUVEM (Supabase) + LOGIN + SESSÃO ÚNICA + AUTO-LOGOUT
+   ──────────────────────────────────────────────────────────
+   ⚠️ AVISO DE SEGURANÇA (leia):
+   Este é um arquivo HTML estático. A SENHA e a CHAVE do Supabase
+   abaixo ficam visíveis no código-fonte para qualquer pessoa.
+   Portanto:
+     • O login é uma "porta", não um cofre. Bloqueia curiosos,
+       não alguém que leia o código.
+     • A regra "apenas 1 login por vez" é COOPERATIVA: funciona
+       quando todos usam o app honestamente. Não é à prova de
+       quem queira burlar (isso exigiria código no servidor).
+   Use apenas para dados de baixo risco (controle de aluguel etc).
+   ══════════════════════════════════════════════════════════ */
+
+/* >>> PREENCHA ESTES DOIS VALORES com os dados do SEU projeto Supabase <<< */
+const SUPABASE_URL      = 'https://oeghowlgkcnkdadczpbq.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_DFc8ohgmDIVYIM30lI_bvw_QqmArtmk';
+
+/* Credenciais de acesso ao app (login da "porta") */
+const APP_USER = 'viagem';
+const APP_PASS = 'viagem';
+
+/* Tempo máximo sem movimentação antes de deslogar (10 minutos) */
+const IDLE_LIMIT_MS = 10 * 60 * 1000;
+const STATE_ID = 1;          // linha única da tabela app_state
+const LOCK_ID  = 1;          // linha única da tabela app_lock
+const HEARTBEAT_MS = 60 * 1000;   // renova o "cadeado" a cada 1 min
+const PUSH_DEBOUNCE_MS = 900;     // agrupa gravações na nuvem
+
+let sb = null;                 // cliente Supabase
+let authed = false;            // sessão ativa?
+let sessionToken = null;       // identificador desta sessão (dono do cadeado)
+let lastActivity = Date.now(); // momento da última movimentação
+let idleTimer = null;          // verifica inatividade
+let heartbeatTimer = null;     // renova o cadeado + verifica posse
+let timerTick = null;          // atualiza o contador na tela
+let pushTimer = null;          // debounce do push
+let applyingRemote = false;    // evita loop ao aplicar mudança remota
+let rtChannel = null;          // canal realtime
+
+function cloudConfigured() {
+  return SUPABASE_URL && SUPABASE_ANON_KEY
+    && !SUPABASE_URL.startsWith('COLE_AQUI')
+    && !SUPABASE_ANON_KEY.startsWith('COLE_AQUI')
+    && typeof window.supabase !== 'undefined';
+}
+
+function getClient() {
+  if (sb) return sb;
+  if (!cloudConfigured()) return null;
+  try { sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); }
+  catch(e) { console.error('Supabase init falhou', e); sb = null; }
+  return sb;
+}
+
+function setConn(state /* online|offline|error */, text) {
+  const pill = document.getElementById('connPill');
+  const txt  = document.getElementById('connText');
+  if (!pill || !txt) return;
+  pill.className = 'conn-pill conn-' + state;
+  txt.textContent = text;
+}
+
+/* ── Atividade / inatividade ── */
+function markActivity() { lastActivity = Date.now(); }
+
+function startActivityWatch() {
+  ['mousemove','mousedown','keydown','touchstart','scroll','click','input','change']
+    .forEach(ev => window.addEventListener(ev, markActivity, { passive: true }));
+
+  idleTimer = setInterval(() => {
+    if (!authed) return;
+    if (Date.now() - lastActivity >= IDLE_LIMIT_MS) {
+      appLogout('idle');
+    }
+  }, 5000);
+
+  timerTick = setInterval(() => {
+    if (!authed) return;
+    const restante = Math.max(0, IDLE_LIMIT_MS - (Date.now() - lastActivity));
+    const m = Math.floor(restante / 60000);
+    const s = Math.floor((restante % 60000) / 1000);
+    const el = document.getElementById('sessionTimer');
+    if (el) el.textContent = `⏱ ${m}:${String(s).padStart(2,'0')}`;
+  }, 1000);
+}
+
+/* ── Cadeado de sessão única (cooperativo) ── */
+async function claimLock() {
+  const client = getClient();
+  if (!client) return { ok:true, offline:true }; // sem nuvem → não há como travar
+  const expIso = new Date(Date.now() + IDLE_LIMIT_MS).toISOString();
+  const token  = uid();
+
+  // 1) Lê o estado atual do cadeado
+  const { data: cur, error: e1 } = await client
+    .from('app_lock').select('holder,expires_at').eq('id', LOCK_ID).maybeSingle();
+  if (e1) return { ok:false, error:e1 };
+
+  const now = Date.now();
+  const livre = !cur || !cur.holder ||
+    (cur.expires_at && new Date(cur.expires_at).getTime() < now);
+  if (!livre) return { ok:false, busy:true };
+
+  // 2) Assume o cadeado SÓ se o holder ainda for o que observei (reduz corrida)
+  let q = client.from('app_lock')
+    .update({ holder: token, expires_at: expIso })
+    .eq('id', LOCK_ID);
+  q = (cur && cur.holder) ? q.eq('holder', cur.holder) : q.is('holder', null);
+  const { data, error } = await q.select();
+  if (error) return { ok:false, error };
+  if (!data || data.length === 0) return { ok:false, busy:true };
+  sessionToken = token;
+  return { ok:true };
+}
+
+async function renewLock() {
+  const client = getClient();
+  if (!client || !sessionToken) return true;
+  const expIso = new Date(Date.now() + IDLE_LIMIT_MS).toISOString();
+  const { data, error } = await client
+    .from('app_lock')
+    .update({ expires_at: expIso })
+    .eq('id', LOCK_ID)
+    .eq('holder', sessionToken)   // só renovo se EU ainda for o dono
+    .select();
+  if (error) { console.warn('renew lock erro', error); return true; }
+  // Se ninguém foi atualizado, perdi a posse (alguém assumiu) → caio fora
+  return !!(data && data.length);
+}
+
+async function releaseLock() {
+  const client = getClient();
+  if (!client || !sessionToken) return;
+  try {
+    await client.from('app_lock')
+      .update({ holder: null, expires_at: null })
+      .eq('id', LOCK_ID)
+      .eq('holder', sessionToken);
+  } catch(e) { /* silencioso */ }
+}
+
+/* ── Sincronização de dados ── */
+async function cloudPull() {
+  const client = getClient();
+  if (!client) return;
+  const { data, error } = await client
+    .from('app_state').select('data').eq('id', STATE_ID).maybeSingle();
+  if (error) { console.warn('cloudPull erro', error); setConn('error','ERRO'); return; }
+
+  const remote = data && data.data;
+  const remoteTemDados = remote && Array.isArray(remote.groups) && remote.groups.length;
+  const localTemDados  = state && Array.isArray(state.groups) && state.groups.length;
+
+  if (remoteTemDados) {
+    applyingRemote = true;
+    state = remote;
+    migrarDados();
+    saveLocal();
+    renderGroupsList();
+    renderMainContent();
+    applyingRemote = false;
+  } else if (localTemDados) {
+    // Nuvem vazia + dados locais → primeira migração: sobe o que já existe
+    await cloudPushNow();
+  }
+  setConn('online', 'ONLINE');
+}
+
+function scheduleCloudPush() {
+  if (!authed || applyingRemote || !cloudConfigured()) return;
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(cloudPushNow, PUSH_DEBOUNCE_MS);
+}
+
+async function cloudPushNow() {
+  const client = getClient();
+  if (!client || !authed) return;
+  const { error } = await client.from('app_state').upsert({
+    id: STATE_ID,
+    data: state,
+    updated_at: new Date().toISOString(),
+    updated_by: sessionToken
+  });
+  if (error) { console.warn('cloudPush erro', error); setConn('error','ERRO'); }
+  else setConn('online', 'ONLINE');
+}
+
+/* ── Realtime: reflete mudanças vindas de outra aba/dispositivo ── */
+function subscribeRealtime() {
+  const client = getClient();
+  if (!client) return;
+  if (rtChannel) { client.removeChannel(rtChannel); rtChannel = null; }
+  rtChannel = client
+    .channel('app_state_changes')
+    .on('postgres_changes',
+      { event: '*', schema: 'public', table: 'app_state', filter: `id=eq.${STATE_ID}` },
+      (payload) => {
+        const autor = payload.new && payload.new.updated_by;
+        if (autor && autor === sessionToken) return; // foi eu mesmo → ignora
+        // Re-busca a linha completa (evita problemas de payload grande)
+        cloudPull();
+      })
+    .subscribe();
+}
+
+/* ── Login ── */
+async function appLogin() {
+  const user = (document.getElementById('authUser').value || '').trim();
+  const pass = document.getElementById('authPass').value || '';
+  const errEl = document.getElementById('authError');
+  const btn   = document.getElementById('authBtn');
+  errEl.textContent = '';
+
+  if (user !== APP_USER || pass !== APP_PASS) {
+    errEl.textContent = 'Usuária ou senha incorretas.';
+    return;
+  }
+
+  btn.disabled = true; btn.textContent = 'Entrando...';
+
+  try {
+    if (cloudConfigured()) {
+      const lock = await claimLock();
+      if (!lock.ok && lock.busy) {
+        errEl.textContent = 'Já existe alguém logado. Tente novamente em alguns minutos.';
+        btn.disabled = false; btn.textContent = 'Entrar';
+        return;
+      }
+      if (!lock.ok && lock.error) {
+        errEl.textContent = 'Falha ao conectar na nuvem. Verifique a configuração.';
+        console.error(lock.error);
+        btn.disabled = false; btn.textContent = 'Entrar';
+        return;
+      }
+    }
+
+    authed = true;
+    markActivity();
+    document.getElementById('authGate').classList.add('hidden');
+    document.getElementById('authPass').value = '';
+
+    if (cloudConfigured()) {
+      await cloudPull();
+      subscribeRealtime();
+      heartbeatTimer = setInterval(async () => {
+        if (!authed) return;
+        // Só renova o cadeado se houve movimentação recente
+        if (Date.now() - lastActivity < IDLE_LIMIT_MS) {
+          const aindaDono = await renewLock();
+          if (!aindaDono) appLogout('takeover');
+        }
+      }, HEARTBEAT_MS);
+      setConn('online', 'ONLINE');
+    } else {
+      setConn('offline', 'LOCAL');
+      showToast('Supabase não configurado — rodando só neste navegador.', 'warn');
+    }
+
+    startActivityWatch();
+  } catch(e) {
+    console.error('Login erro', e);
+    errEl.textContent = 'Erro inesperado no login.';
+    btn.disabled = false; btn.textContent = 'Entrar';
+  } finally {
+    if (authed) { btn.disabled = false; btn.textContent = 'Entrar'; }
+  }
+}
+
+/* ── Logout ── */
+async function appLogout(motivo) {
+  if (!authed) return;
+  authed = false;
+
+  clearInterval(idleTimer);     idleTimer = null;
+  clearInterval(heartbeatTimer);heartbeatTimer = null;
+  clearInterval(timerTick);     timerTick = null;
+  clearTimeout(pushTimer);
+
+  const client = getClient();
+  if (client) {
+    try { if (rtChannel) { client.removeChannel(rtChannel); rtChannel = null; } } catch(e){}
+    await releaseLock();
+  }
+  sessionToken = null;
+
+  const gate = document.getElementById('authGate');
+  if (gate) gate.classList.remove('hidden');
+  const statusEl = document.getElementById('authStatus');
+  if (statusEl) {
+    statusEl.textContent =
+      motivo === 'idle'     ? 'Sessão encerrada por inatividade (10 min).' :
+      motivo === 'takeover' ? 'Sua sessão foi assumida por outro acesso.'  :
+      '';
+  }
+  const sEl = document.getElementById('sessionTimer');
+  if (sEl) sEl.textContent = '';
+}
+
+// Ao fechar a aba, o cadeado não é liberado via beacon (limitação de headers),
+// mas ele expira sozinho em 10 min. O próximo login assume normalmente.
+window.addEventListener('beforeunload', () => { /* cadeado expira por tempo */ });
 
 /* ── UTILS ── */
 function uid() { return Date.now().toString(36)+Math.random().toString(36).slice(2); }
@@ -3234,6 +3599,18 @@ function closeMobileSidebar() {
     step('Renderizando conteúdo...');
     renderMainContent();
     step('OK ✓');
+
+    // ── Login: liga o botão e o Enter ──
+    document.getElementById('authBtn').addEventListener('click', appLogin);
+    document.getElementById('authPass').addEventListener('keydown', (e) => { if (e.key === 'Enter') appLogin(); });
+    document.getElementById('authUser').addEventListener('keydown', (e) => { if (e.key === 'Enter') document.getElementById('authPass').focus(); });
+    setConn(cloudConfigured() ? 'offline' : 'offline', cloudConfigured() ? 'AGUARDANDO' : 'LOCAL');
+    const aStatus = document.getElementById('authStatus');
+    if (!cloudConfigured() && aStatus) {
+      aStatus.textContent = '⚠️ Supabase não configurado — os dados ficarão só neste navegador.';
+    }
+    document.getElementById('authUser').focus();
+
     setTimeout(() => { if (dbg.parentNode) dbg.parentNode.removeChild(dbg); }, 2000);
   } catch(e) {
     dbg.style.background = '#ff5757';
