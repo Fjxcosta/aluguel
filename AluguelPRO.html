@@ -1075,6 +1075,9 @@ let timerTick = null;          // atualiza o contador na tela
 let pushTimer = null;          // debounce do push
 let applyingRemote = false;    // evita loop ao aplicar mudança remota
 let rtChannel = null;          // canal realtime
+let activityWatchStarted = false; // evita registrar listeners duplicados
+
+const SESSION_KEY = 'aluguelPRO_session'; // sessão persistida (sobrevive ao refresh)
 
 function cloudConfigured() {
   return SUPABASE_URL && SUPABASE_ANON_KEY
@@ -1099,12 +1102,34 @@ function setConn(state /* online|offline|error */, text) {
   txt.textContent = text;
 }
 
+/* ── Sessão persistida (mantém logado após refresh) ── */
+function persistSession() {
+  if (!sessionToken) return;
+  try {
+    _store.setItem(SESSION_KEY, JSON.stringify({ token: sessionToken, lastActivity }));
+  } catch(e) { /* silencioso */ }
+}
+function clearSession() {
+  try { _store.removeItem(SESSION_KEY); } catch(e) {}
+}
+function readSession() {
+  try {
+    const raw = _store.getItem(SESSION_KEY);
+    if (!raw) return null;
+    const s = JSON.parse(raw);
+    return (s && s.token) ? s : null;
+  } catch(e) { return null; }
+}
+
 /* ── Atividade / inatividade ── */
 function markActivity() { lastActivity = Date.now(); }
 
 function startActivityWatch() {
-  ['mousemove','mousedown','keydown','touchstart','scroll','click','input','change']
-    .forEach(ev => window.addEventListener(ev, markActivity, { passive: true }));
+  if (!activityWatchStarted) {
+    ['mousemove','mousedown','keydown','touchstart','scroll','click','input','change']
+      .forEach(ev => window.addEventListener(ev, markActivity, { passive: true }));
+    activityWatchStarted = true;
+  }
 
   idleTimer = setInterval(() => {
     if (!authed) return;
@@ -1115,6 +1140,7 @@ function startActivityWatch() {
 
   timerTick = setInterval(() => {
     if (!authed) return;
+    persistSession(); // grava a última atividade p/ sobreviver ao refresh
     const restante = Math.max(0, IDLE_LIMIT_MS - (Date.now() - lastActivity));
     const m = Math.floor(restante / 60000);
     const s = Math.floor((restante % 60000) / 1000);
