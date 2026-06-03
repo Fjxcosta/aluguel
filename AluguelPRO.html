@@ -1018,6 +1018,22 @@ function migrarDados() {
       });
     });
   });
+
+  // ── Reparo único: desfaz a "queima" de valorDevido feita pelo modelo antigo ──
+  // O modelo antigo gravava o abatimento do excedente reduzindo o valorDevido das
+  // parcelas futuras. Agora isso é calculado na hora (cascadeParcelas), então
+  // restauramos o valor planejado de cada parcela normal uma única vez.
+  if (!state._fixCascadeV1) {
+    (state.groups||[]).forEach(g => {
+      try {
+        if (g.rental && (g.rental.parcelas || g.rental.installments)) {
+          reconstruirParcelas(g); // reconstrói usando o valor planejado, preservando pagamentos e datas
+        }
+      } catch(e) { console.warn('reparo cascade falhou para um grupo', e); }
+    });
+    state._fixCascadeV1 = true;
+    migFixedPending = true; // sinaliza para gravar na nuvem após login
+  }
 }
 
 function load() {
@@ -1062,7 +1078,8 @@ const APP_PASS = 'viagem';
 const IDLE_LIMIT_MS = 10 * 60 * 1000;
 const STATE_ID = 1;          // linha única da tabela app_state
 const LOCK_ID  = 1;          // linha única da tabela app_lock
-const HEARTBEAT_MS = 60 * 1000;   // renova o "cadeado" a cada 1 min
+const LOCK_TTL_MS  = 2 * 60 * 1000;   // validade do "cadeado": expira em 2 min se a aba sumir
+const HEARTBEAT_MS = 45 * 1000;       // renova o cadeado a cada 45s enquanto a aba está aberta
 const PUSH_DEBOUNCE_MS = 900;     // agrupa gravações na nuvem
 
 let sb = null;                 // cliente Supabase
@@ -1076,6 +1093,7 @@ let pushTimer = null;          // debounce do push
 let applyingRemote = false;    // evita loop ao aplicar mudança remota
 let rtChannel = null;          // canal realtime
 let activityWatchStarted = false; // evita registrar listeners duplicados
+let migFixedPending = false;      // reparo de dados aplicado e ainda não enviado à nuvem
 
 const SESSION_KEY = 'aluguelPRO_session'; // sessão persistida (sobrevive ao refresh)
 
@@ -1153,7 +1171,7 @@ function startActivityWatch() {
 async function claimLock() {
   const client = getClient();
   if (!client) return { ok:true, offline:true }; // sem nuvem → não há como travar
-  const expIso = new Date(Date.now() + IDLE_LIMIT_MS).toISOString();
+  const expIso = new Date(Date.now() + LOCK_TTL_MS).toISOString();
   const token  = uid();
 
   // 1) Lê o estado atual do cadeado
@@ -1181,7 +1199,7 @@ async function claimLock() {
 async function renewLock() {
   const client = getClient();
   if (!client || !sessionToken) return true;
-  const expIso = new Date(Date.now() + IDLE_LIMIT_MS).toISOString();
+  const expIso = new Date(Date.now() + LOCK_TTL_MS).toISOString();
   const { data, error } = await client
     .from('app_lock')
     .update({ expires_at: expIso })
@@ -1297,31 +1315,12 @@ async function appLogin() {
         btn.disabled = false; btn.textContent = 'Entrar';
         return;
       }
-    }
-
-    authed = true;
-    markActivity();
-    document.getElementById('authGate').classList.add('hidden');
-    document.getElementById('authPass').value = '';
-
-    if (cloudConfigured()) {
-      await cloudPull();
-      subscribeRealtime();
-      heartbeatTimer = setInterval(async () => {
-        if (!authed) return;
-        // Só renova o cadeado se houve movimentação recente
-        if (Date.now() - lastActivity < IDLE_LIMIT_MS) {
-          const aindaDono = await renewLock();
-          if (!aindaDono) appLogout('takeover');
-        }
-      }, HEARTBEAT_MS);
-      setConn('online', 'ONLINE');
+      // claimLock definiu sessionToken
     } else {
-      setConn('offline', 'LOCAL');
-      showToast('Supabase não configurado — rodando só neste navegador.', 'warn');
+      sessionToken = uid(); // modo local: token só p/ persistir a sessão
     }
 
-    startActivityWatch();
+    await startSession(false);
   } catch(e) {
     console.error('Login erro', e);
     errEl.textContent = 'Erro inesperado no login.';
@@ -1329,6 +1328,88 @@ async function appLogin() {
   } finally {
     if (authed) { btn.disabled = false; btn.textContent = 'Entrar'; }
   }
+}
+
+/* Liga tudo depois que a sessão foi autorizada (login OU restauração no refresh) */
+async function startSession(isRestore) {
+  authed = true;
+  markActivity();          // login/refresh conta como atividade → renova 10 min
+  persistSession();
+  document.getElementById('authGate').classList.add('hidden');
+  const passEl = document.getElementById('authPass'); if (passEl) passEl.value = '';
+  const statusEl = document.getElementById('authStatus'); if (statusEl) statusEl.textContent = '';
+
+  if (cloudConfigured()) {
+    await cloudPull();
+    // Se o reparo único foi aplicado (em dados locais ou da nuvem), grava de volta
+    if (migFixedPending) { await cloudPushNow(); migFixedPending = false; }
+    subscribeRealtime();
+    heartbeatTimer = setInterval(async () => {
+      if (!authed) return;
+      // Mantém o cadeado vivo enquanto a aba está aberta (a inatividade de 10 min
+      // é tratada à parte pelo idleTimer). Assim, se a aba fechar, o cadeado
+      // expira sozinho em ~2 min e libera para outra pessoa.
+      const aindaDono = await renewLock();
+      if (!aindaDono) appLogout('takeover');
+    }, HEARTBEAT_MS);
+    setConn('online', 'ONLINE');
+  } else {
+    setConn('offline', 'LOCAL');
+    if (!isRestore) showToast('Supabase não configurado — rodando só neste navegador.', 'warn');
+  }
+
+  startActivityWatch();
+}
+
+/* Reassume o cadeado para um token já existente (usado na restauração) */
+async function reclaimLock(token) {
+  const client = getClient();
+  if (!client) return true; // sem nuvem → nada a reassumir
+  const { data: cur, error } = await client
+    .from('app_lock').select('holder,expires_at').eq('id', LOCK_ID).maybeSingle();
+  if (error) { console.warn('reclaim erro', error); return true; } // não bloqueia por falha de rede
+
+  const now = Date.now();
+  const ehMeu = cur && cur.holder === token;
+  const livre = !cur || !cur.holder ||
+    (cur.expires_at && new Date(cur.expires_at).getTime() < now);
+
+  if (!ehMeu && !livre) return false; // outra pessoa logada com cadeado válido
+
+  const expIso = new Date(now + LOCK_TTL_MS).toISOString();
+  let q = client.from('app_lock').update({ holder: token, expires_at: expIso }).eq('id', LOCK_ID);
+  q = ehMeu ? q.eq('holder', token)
+            : (cur && cur.holder ? q.eq('holder', cur.holder) : q.is('holder', null));
+  const { data } = await q.select();
+  return !!(data && data.length);
+}
+
+/* Tenta restaurar a sessão guardada no navegador (chamado no boot) */
+async function tryRestoreSession() {
+  const s = readSession();
+  if (!s) return;
+
+  // Passou do tempo de inatividade enquanto estava fora → volta ao login
+  if (Date.now() - (s.lastActivity || 0) >= IDLE_LIMIT_MS) {
+    clearSession();
+    return;
+  }
+
+  sessionToken = s.token;
+  lastActivity = s.lastActivity || Date.now();
+
+  if (cloudConfigured()) {
+    const ok = await reclaimLock(sessionToken);
+    if (!ok) {
+      // Outro acesso assumiu enquanto você estava fora
+      clearSession();
+      sessionToken = null;
+      const st = document.getElementById('authStatus');
+      if (st) st.textContent = 'Outro acesso assumiu a sessão. Entre novamente.';
+      return;
+    }
+  }
+  await startSession(true);
 }
 
 /* ── Logout ── */
@@ -1340,6 +1421,8 @@ async function appLogout(motivo) {
   clearInterval(heartbeatTimer);heartbeatTimer = null;
   clearInterval(timerTick);     timerTick = null;
   clearTimeout(pushTimer);
+
+  clearSession(); // esquece a sessão → próximo refresh cai no login
 
   const client = getClient();
   if (client) {
@@ -1361,9 +1444,29 @@ async function appLogout(motivo) {
   if (sEl) sEl.textContent = '';
 }
 
-// Ao fechar a aba, o cadeado não é liberado via beacon (limitação de headers),
-// mas ele expira sozinho em 10 min. O próximo login assume normalmente.
-window.addEventListener('beforeunload', () => { /* cadeado expira por tempo */ });
+// Ao fechar OU recarregar a aba, libera o cadeado imediatamente.
+// fetch com keepalive sobrevive ao fechamento da página (sendBeacon não
+// permite os headers que o Supabase exige). Num refresh, a sessão é
+// retomada no boot (tryRestoreSession reassume o cadeado livre).
+function releaseLockBeacon() {
+  if (!sessionToken || !cloudConfigured()) return;
+  try {
+    const url = `${SUPABASE_URL}/rest/v1/app_lock?id=eq.${LOCK_ID}&holder=eq.${encodeURIComponent(sessionToken)}`;
+    fetch(url, {
+      method: 'PATCH',
+      keepalive: true,
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=minimal'
+      },
+      body: JSON.stringify({ holder: null, expires_at: null })
+    });
+  } catch(e) { /* a expiração de ~2 min cobre se isto falhar */ }
+}
+window.addEventListener('pagehide', releaseLockBeacon);
+window.addEventListener('beforeunload', releaseLockBeacon);
 
 /* ── UTILS ── */
 function uid() { return Date.now().toString(36)+Math.random().toString(36).slice(2); }
@@ -1454,41 +1557,77 @@ function calcGrupo(grupo) {
   return { aluguel, patrocinio, totalFinal, valorPorCota, valorParcelaCota, valorParcelaTotal, numParcelas, cotas };
 }
 
-// Calcula total pago e restante de uma lista de parcelas
+// Aplica o "crédito" (excedente) de parcelas pagas a mais sobre o saldo das
+// demais parcelas NORMais, em ordem. NÃO grava nada — é tudo calculado na hora,
+// então excluir um pagamento recalcula e restaura os valores originais sozinho.
+function cascadeParcelas(lista) {
+  const arr = (lista||[]).map(p => {
+    const dev  = Math.round((p.valorDevido || p.amountDue || 0) * 100) / 100;
+    const pago = Math.round((p.pagamentos || p.payments || [])
+      .reduce((s, x) => s + (x.valor || x.value || 0), 0) * 100) / 100;
+    return { p, dev, pago, caixa: !!p.origemCaixa, def: Math.max(0, dev - pago) };
+  });
+  // Bolsa de excedente: soma do que foi pago além do devido nas parcelas normais
+  let pool = Math.round(arr.reduce((s, x) => s + (x.caixa ? 0 : Math.max(0, x.pago - x.dev)), 0) * 100) / 100;
+  const map = new Map();
+  arr.forEach(x => {
+    let eff = x.def;
+    // O crédito abate o saldo das parcelas normais seguintes (não as de caixa)
+    if (!x.caixa && pool > 0 && eff > 0) {
+      const cobre = Math.min(pool, eff);
+      eff  = Math.round((eff  - cobre) * 100) / 100;
+      pool = Math.round((pool - cobre) * 100) / 100;
+    }
+    let status = 'Pendente';
+    if (x.dev > 0 && eff <= 0.01) status = 'Pago';
+    else if (x.pago > 0 || eff < x.dev - 0.01) status = 'Parcial';
+    map.set(x.p, { dev: x.dev, pago: x.pago, eff, status });
+  });
+  return map;
+}
+
+// Calcula total pago e restante de uma lista de parcelas (com cascata de crédito)
 function calcInstallmentsStatus(listaParcelas) {
-  let totalDevido = 0, totalPago = 0;
   const hoje = new Date().toISOString().split('T')[0];
-  let temVencida = false;
+  const map = cascadeParcelas(listaParcelas);
+  let totalDevido = 0, totalPago = 0, restanteReal = 0;
+  let temVencida = false, temAberta = false;
   (listaParcelas||[]).forEach(p => {
-    const dev = Math.round((p.valorDevido || p.amountDue || 0) * 100) / 100;
-    const pags = p.pagamentos || p.payments || [];
-    const pago = Math.round(pags.reduce((s, pg) => s + (pg.valor || pg.value || 0), 0) * 100) / 100;
-    totalDevido += dev;
-    totalPago   += pago;
-    // Parcela vencida: tem data, passou de hoje e não está quitada
-    const vc = p.vencimento || p.due || '';
-    if (vc && vc < hoje && pago < dev - 0.01) temVencida = true;
+    const r = map.get(p) || { dev:0, pago:0, eff:0 };
+    totalDevido  += r.dev;
+    totalPago    += r.pago;
+    restanteReal += r.eff;
+    if (r.eff > 0.01) {
+      temAberta = true;
+      const vc = p.vencimento || p.due || '';
+      if (vc && vc < hoje) temVencida = true;
+    }
   });
   totalDevido = Math.round(totalDevido * 100) / 100;
   totalPago   = Math.round(totalPago   * 100) / 100;
-  const restante = Math.max(0, totalDevido - totalPago);
+  const restante = Math.round(restanteReal * 100) / 100;
   const pct = totalDevido > 0 ? Math.min(100, (totalPago / totalDevido) * 100) : 0;
   let status = 'Pendente';
-  if (totalDevido > 0 && totalPago >= totalDevido - 0.01) status = 'Quitado';
+  if (totalDevido > 0 && !temAberta) status = 'Quitado';
   else if (temVencida)   status = 'Vencido';
   else if (totalPago > 0) status = 'Em dia';
   return { totalDevido, totalPago, restante, pct, status,
     totalDue: totalDevido, totalPaid: totalPago, remaining: restante };
 }
 
-// Status de uma única parcela
-function calcInstStatus(parcela) {
+// Status de uma única parcela. Passe 'lista' para aplicar o abatimento por
+// crédito (excedente) das demais parcelas. Sem 'lista', usa só o saldo próprio.
+function calcInstStatus(parcela, lista) {
+  if (lista) {
+    const r = cascadeParcelas(lista).get(parcela);
+    if (r) return { pago:r.pago, devido:r.dev, restante:r.eff, status:r.status,
+      paid:r.pago, due:r.dev, remaining:r.eff };
+  }
   const pagamentos = parcela.pagamentos || parcela.payments || [];
   const pago   = Math.round(pagamentos.reduce((s, p) => s + (p.valor || p.value || 0), 0) * 100) / 100;
   const devido = Math.round((parcela.valorDevido || parcela.amountDue || 0) * 100) / 100;
   const restante = Math.max(0, devido - pago);
   let status = 'Pendente';
-  // Tolerância de R$ 0,01 para evitar falso "Parcial" por arredondamento de ponto flutuante
   if (devido > 0 && pago >= devido - 0.01) status = 'Pago';
   else if (pago > 0) status = 'Parcial';
   return { pago, devido, restante, status,
@@ -1594,16 +1733,13 @@ function construirParcelas(quantidade, valorParcela, datas, existentes) {
   for (let i = 0; i < quantidade; i++) {
     const ex = existentes && existentes[i] ? existentes[i] : null;
     const pagamentos = ex ? (ex.pagamentos || ex.payments || []) : [];
-    const temPagamento = pagamentos.length > 0;
-    // Só preserva valorDevido se a parcela já tem pagamentos registrados
-    // Caso contrário, atualiza para o valor atual calculado (ex: novo integrante)
-    const valorDevido = (ex && temPagamento && (ex.valorDevido || ex.amountDue))
-      ? (ex.valorDevido || ex.amountDue)
-      : valorParcela;
+    // valorDevido é SEMPRE o valor planejado da parcela. O excedente de quem
+    // paga a mais é abatido nas seguintes em tempo de cálculo (cascadeParcelas),
+    // nunca gravado — assim excluir um pagamento restaura tudo automaticamente.
     resultado.push({
       id:          ex ? ex.id : uid(),
       vencimento:  (ex && ex.vencimento) ? ex.vencimento : (ex?.due || datas[i] || ''),
-      valorDevido,
+      valorDevido: valorParcela,
       pagamentos
     });
   }
@@ -1936,7 +2072,7 @@ function openPayModal(targetType, targetId, instIdx) {
     showToast('Parcela não encontrada. Configure o aluguel novamente.', 'warn');
     return;
   }
-  const { pago, devido, restante: restParcela } = calcInstStatus(parcela);
+  const { pago, devido, restante: restParcela } = calcInstStatus(parcela, installmentList);
 
   document.getElementById('modalPayTitle').textContent = `Parcela ${instIdx+1} — ${shortDate(parcela.vencimento||parcela.due)}`;
   document.getElementById('payInfo').innerHTML = `
@@ -1955,27 +2091,21 @@ function openPayModal(targetType, targetId, instIdx) {
 
 function onPayValueInput() {
   if (!payCtx) return;
-  const parcela = payCtx.installmentList[payCtx.instIdx];
-  const { restante } = calcInstStatus(parcela);
+  const lista   = payCtx.installmentList;
+  const parcela = lista[payCtx.instIdx];
+  const { restante } = calcInstStatus(parcela, lista);
   const v = readBRLField('inputPayValue');
   const surplusEl = document.getElementById('surplusInfo');
-  const diferenca = v - restante;
-  if (Math.abs(diferenca) > 0.01 && restante > 0) {
-    const abertas = payCtx.installmentList.filter((x,i) => {
-      if (i === payCtx.instIdx) return false;
-      if (x.origemCaixa) return false; // não conta parcelas de caixa na redistribuição
-      const st = calcInstStatus(x);
-      return st.status !== 'Pago' && st.status !== 'Quitado';
+  const diferenca = Math.round((v - restante) * 100) / 100;
+  if (diferenca > 0.01 && restante >= 0) {
+    // Parcelas normais seguintes ainda em aberto que podem receber o crédito
+    const abertas = lista.filter((x,i) => {
+      if (i === payCtx.instIdx || x.origemCaixa) return false;
+      return calcInstStatus(x, lista).status !== 'Pago';
     }).length;
-    if (diferenca > 0) {
-      surplusEl.innerHTML = abertas > 0
-        ? `💡 Excedente de <strong>${fmtCur(diferenca)}</strong> será distribuído e abatido em ${abertas} parcela(s) futura(s).`
-        : `💡 Excedente de <strong>${fmtCur(diferenca)}</strong> — sem parcelas futuras para distribuir.`;
-    } else {
-      surplusEl.innerHTML = abertas > 0
-        ? `💡 Valor menor: <strong>${fmtCur(Math.abs(diferenca))}</strong> será acrescido em ${abertas} parcela(s) futura(s).`
-        : `💡 Pagamento parcial — sem parcelas futuras para redistribuir.`;
-    }
+    surplusEl.innerHTML = abertas > 0
+      ? `💡 Excedente de <strong>${fmtCur(diferenca)}</strong> será abatido em ${abertas} parcela(s) seguinte(s).`
+      : `💡 Excedente de <strong>${fmtCur(diferenca)}</strong> — ficará como crédito (sem parcelas seguintes em aberto).`;
     surplusEl.classList.add('show');
   } else {
     surplusEl.classList.remove('show');
@@ -1990,44 +2120,16 @@ function saveInstallmentPayment() {
   const lista    = payCtx.installmentList;
   const idxAtual = payCtx.instIdx;
   const parcela  = lista[idxAtual];
-  const { restante } = calcInstStatus(parcela);
+  const { restante } = calcInstStatus(parcela, lista);
 
   const pagamento = { id: uid(), valor: v, data: document.getElementById('inputPayDate').value };
   if (tmpFiles['filePay']) { pagamento.arquivo = tmpFiles['filePay'].data; pagamento.nomeArquivo = tmpFiles['filePay'].name; }
   if (!parcela.pagamentos) parcela.pagamentos = [];
   parcela.pagamentos.push(pagamento);
 
-  // Redistribuir saldo excedente ou déficit nas parcelas FUTURAS não pagas
-  const diferenca = v - restante; // positivo = excedente, negativo = pagou menos
-
-  if (Math.abs(diferenca) > 0.01) {
-    // Parcelas abertas a partir da próxima — excluindo parcelas de CAIXA
-    const abertas = [];
-    for (let i = 0; i < lista.length; i++) {
-      if (i === idxAtual) continue;
-      if (lista[i].origemCaixa) continue; // nunca redistribui em parcelas extras de caixa
-      const st = calcInstStatus(lista[i]);
-      if (st.status !== 'Pago' && st.status !== 'Quitado') abertas.push(i);
-    }
-    if (abertas.length > 0) {
-      const ajustePorParcela = Math.round((diferenca / abertas.length) * 100) / 100;
-      abertas.forEach(i => {
-        // Excedente: abate das próximas. Déficit: acresce nas próximas.
-        const atual = Math.round((lista[i].valorDevido || lista[i].amountDue || 0) * 100) / 100;
-        const novo  = Math.max(0, atual - ajustePorParcela);
-        lista[i].valorDevido = novo;
-        if (lista[i].amountDue !== undefined) lista[i].amountDue = novo;
-      });
-      const acao = diferenca > 0 ? `Excedente de ${fmtCur(diferenca)} distribuído entre ${abertas.length} parcela(s) futura(s).` : `Saldo de ${fmtCur(Math.abs(diferenca))} acrescido nas ${abertas.length} parcela(s) futura(s).`;
-      save(); closeModal('modalPay'); renderMainContent();
-      setTimeout(() => {
-        const body = document.getElementById(`body_${payCtx.targetType}_${payCtx.targetId}`);
-        if (body) body.classList.add('open');
-      }, 60);
-      showToast(acao, 'info');
-      return;
-    }
-  }
+  // O excedente (se houver) é abatido nas parcelas seguintes em tempo de cálculo,
+  // sem gravar nada. Nada de mutar valorDevido aqui — assim a exclusão é reversível.
+  const diferenca = Math.round((v - restante) * 100) / 100;
 
   save(); closeModal('modalPay'); renderMainContent();
   setTimeout(() => {
@@ -2036,7 +2138,8 @@ function saveInstallmentPayment() {
     const ib = document.getElementById(`instBody_${payCtx.targetType}_${payCtx.targetId}_${payCtx.instIdx}`);
     if (ib) ib.classList.add('open');
   }, 60);
-  showToast('Pagamento registrado', 'success');
+  if (diferenca > 0.01)      showToast(`Pagamento registrado. Excedente de ${fmtCur(diferenca)} abatido nas próximas parcelas.`, 'info');
+  else                       showToast('Pagamento registrado', 'success');
 }
 
 let editPayCtx = null; // { targetType, targetId, instIdx, payIdx }
@@ -2402,7 +2505,7 @@ function renderFamilyCard(f, g, calc) {
             <div class="sum-box"><div class="sum-box-label">Restante</div><div class="sum-box-value ${remaining>0?'d':'s'}">${fmtCur(remaining)}</div></div>
           </div>
           <div style="font-size:11px;color:#5a5a70;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Parcelas (${calc.numParcelas}x de ${fmtCur(famInstValue)})</div>
-          <div class="installment-list">${(f.installments||[]).map((inst,i) => renderInstRow(inst, i, 'family', f.id)).join('')}</div>
+          <div class="installment-list">${(f.installments||[]).map((inst,i) => renderInstRow(inst, i, 'family', f.id, f.installments)).join('')}</div>
         </div>
       </div>`;
   } else {
@@ -2448,7 +2551,7 @@ function renderFamilyCard(f, g, calc) {
                   <button class="btn btn-danger btn-icon btn-xs" onclick="confirmDeleteMember('${m.id}')">🗑</button>
                 </div>
               </div>
-              <div class="installment-list">${(m.installments||[]).map((inst,i) => renderInstRow(inst, i, 'member', m.id)).join('')}</div>
+              <div class="installment-list">${(m.installments||[]).map((inst,i) => renderInstRow(inst, i, 'member', m.id, m.installments)).join('')}</div>
             </div>
             <hr class="divider">
           `).join('')}
@@ -2470,7 +2573,7 @@ function renderMemberCard(m, g, calc, type) {
           <div class="member-name">${esc(m.name)}</div>
           <div class="member-meta">
             ${fmtCur(st.totalPaid)} pago de ${fmtCur(calc.valorPorCota)} · ${calc.numParcelas}x de ${fmtCur(calc.valorParcelaCota)}/mês
-            ${(() => { const hoje=new Date().toISOString().split('T')[0]; const vencidas=(m.installments||[]).filter(p=>{const vc=p.vencimento||p.due;return vc&&vc<hoje&&calcInstStatus(p).status!=='Pago';}).length; return vencidas>0?`<span class="overdue-badge">${vencidas} vencida${vencidas>1?'s':''}</span>`:''; })()}
+            ${(() => { const hoje=new Date().toISOString().split('T')[0]; const vencidas=(m.installments||[]).filter(p=>{const vc=p.vencimento||p.due;return vc&&vc<hoje&&calcInstStatus(p, m.installments).status!=='Pago';}).length; return vencidas>0?`<span class="overdue-badge">${vencidas} vencida${vencidas>1?'s':''}</span>`:''; })()}
           </div>
           <div class="progress-wrap"><div class="progress-bar ${barC}" style="width:${pct}%"></div></div>
         </div>
@@ -2489,14 +2592,14 @@ function renderMemberCard(m, g, calc, type) {
           <div class="sum-box"><div class="sum-box-label">Restante</div><div class="sum-box-value ${st.remaining>0?'d':'s'}">${fmtCur(st.remaining)}</div></div>
         </div>
         <div style="font-size:11px;color:#5a5a70;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Parcelas (${calc.numParcelas}x de ${fmtCur(calc.valorParcelaCota)})</div>
-        <div class="installment-list">${(m.installments||[]).map((inst,i) => renderInstRow(inst, i, 'member', m.id)).join('')}</div>
+        <div class="installment-list">${(m.installments||[]).map((inst,i) => renderInstRow(inst, i, 'member', m.id, m.installments)).join('')}</div>
       </div>
     </div>`;
 }
 
 /* ── RENDERIZA LINHA DE PARCELA ── */
-function renderInstRow(parcela, i, tipoAlvo, idAlvo) {
-  const { pago, devido, restante, status } = calcInstStatus(parcela);
+function renderInstRow(parcela, i, tipoAlvo, idAlvo, lista) {
+  const { pago, devido, restante, status } = calcInstStatus(parcela, lista);
   const vencimento = parcela.vencimento || parcela.due || '';
   const pagamentos = parcela.pagamentos || parcela.payments || [];
   const hoje = new Date().toISOString().split('T')[0];
@@ -2587,7 +2690,7 @@ function getNextOpenInst(targetType, targetId) {
   if (targetType==='member') { const m=g.members.find(x=>x.id===targetId); if(m) instList=m.installments||[]; }
   else { const f=(g.families||[]).find(x=>x.id===targetId); if(f) instList=f.installments||[]; }
   if (!instList.length) return null;
-  for (let i=0;i<instList.length;i++) { if (calcInstStatus(instList[i]).status!=='Pago') return i; }
+  for (let i=0;i<instList.length;i++) { if (calcInstStatus(instList[i], instList).status!=='Pago') return i; }
   return null; // todas pagas
 }
 
@@ -3424,7 +3527,7 @@ function exportPDF() {
   const parcelas2html = (lista) => {
     if (!lista || !lista.length) return '';
     let rows = lista.map((inst, i) => {
-      const { pago, devido, restante, status } = calcInstStatus(inst);
+      const { pago, devido, restante, status } = calcInstStatus(inst, lista);
       const venc = inst.vencimento || inst.due || '';
       const pagamentos = inst.pagamentos || inst.payments || [];
       const pagsRows = pagamentos.map((p, pi) => {
@@ -3636,6 +3739,9 @@ function closeMobileSidebar() {
       aStatus.textContent = '⚠️ Supabase não configurado — os dados ficarão só neste navegador.';
     }
     document.getElementById('authUser').focus();
+
+    // Tenta restaurar a sessão (mantém logado após refresh, dentro dos 10 min)
+    tryRestoreSession();
 
     setTimeout(() => { if (dbg.parentNode) dbg.parentNode.removeChild(dbg); }, 2000);
   } catch(e) {
