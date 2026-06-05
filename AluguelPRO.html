@@ -384,6 +384,12 @@ body {
 .conn-offline { background: rgba(255,179,71,.12); color: #ffb347; } .conn-offline .dot { background: #ffb347; }
 .conn-error   { background: rgba(255,87,87,.12);  color: #ff5757; } .conn-error .dot { background: #ff5757; }
 .session-timer { font-size: 11px; color: #5a5a70; font-variant-numeric: tabular-nums; }
+.member-card.is-sponsor { border-color: rgba(255,213,87,.45); box-shadow: 0 0 0 1px rgba(255,213,87,.15) inset; }
+.sponsor-badge { font-size: 10px; font-weight: 700; color: #1a1a1a; background: linear-gradient(135deg,#ffd557,#ffb347); padding: 2px 7px; border-radius: 99px; vertical-align: middle; }
+.patroc-tag { display: inline-block; font-size: 11px; font-weight: 600; color: #ffd557; background: rgba(255,213,87,.10); border: 1px solid rgba(255,213,87,.25); padding: 2px 8px; border-radius: 6px; }
+.sponsor-note { font-size: 12px; color: #c9c9d6; background: rgba(255,213,87,.08); border: 1px solid rgba(255,213,87,.20); border-radius: 8px; padding: 8px 12px; margin-bottom: 12px; }
+.sponsor-note strong { color: #ffd557; }
+.inst-breakdown { font-size: 10.5px; color: #ffd557; margin-top: 2px; font-weight: 600; }
 </style>
 </head>
 <body>
@@ -394,8 +400,8 @@ body {
     <div class="auth-logo">🏠 AluguelPRO <span>PRO</span></div>
     <div class="auth-sub">Entre para acessar os dados compartilhados.</div>
     <div class="form-group">
-      <label class="form-label" for="authUser">Usuária</label>
-      <input class="form-input" id="authUser" type="text" autocomplete="username" placeholder="usuária" />
+      <label class="form-label" for="authUser">Usuário</label>
+      <input class="form-input" id="authUser" type="text" autocomplete="username" placeholder="usuário" />
     </div>
     <div class="form-group">
       <label class="form-label" for="authPass">Senha</label>
@@ -511,7 +517,14 @@ body {
         </div>
         <div class="form-group">
           <label class="form-label">Patrocínio / Desconto</label>
-          <input class="form-input" id="inputSponsor" placeholder="R$ 0,00" type="text" inputmode="numeric" autocomplete="off" oninput="applyBRLMask(this)">
+          <input class="form-input" id="inputSponsor" placeholder="R$ 0,00" type="text" inputmode="numeric" autocomplete="off" oninput="applyBRLMask(this);onSponsorInput()">
+        </div>
+        <div class="form-group" id="sponsorPayerWrap" style="display:none;">
+          <label class="form-label">Quem paga o patrocínio? <span class="req">*</span></label>
+          <select class="form-input" id="inputSponsorPayer">
+            <option value="">— selecione —</option>
+          </select>
+          <div style="font-size:11px;color:#5a5a70;margin-top:4px;">O patrocinador paga isto ALÉM da cota dele, nas mesmas parcelas do aluguel.</div>
         </div>
         <div class="form-group">
           <label class="form-label">Nº de Parcelas <span class="req">*</span></label>
@@ -1034,6 +1047,20 @@ function migrarDados() {
     state._fixCascadeV1 = true;
     migFixedPending = true; // sinaliza para gravar na nuvem após login
   }
+
+  // ── Reparo único: patrocínio embutido na parcela do patrocinador ──
+  // Remove o cronograma separado de patrocínio (modelo anterior) e reconstrói
+  // as parcelas, agora somando o patrocínio na parcela de quem patrocina.
+  if (!state._fixPatrocV2) {
+    (state.groups||[]).forEach(g => {
+      try {
+        if (g.rental) delete g.rental.patrocinioInstallments;
+        if (g.rental && (g.rental.parcelas || g.rental.installments)) reconstruirParcelas(g);
+      } catch(e) { console.warn('reparo patrocínio falhou para um grupo', e); }
+    });
+    state._fixPatrocV2 = true;
+    migFixedPending = true;
+  }
 }
 
 function load() {
@@ -1295,7 +1322,7 @@ async function appLogin() {
   errEl.textContent = '';
 
   if (user !== APP_USER || pass !== APP_PASS) {
-    errEl.textContent = 'Usuária ou senha incorretas.';
+    errEl.textContent = 'Usuário ou senha incorretos.';
     return;
   }
 
@@ -1444,29 +1471,11 @@ async function appLogout(motivo) {
   if (sEl) sEl.textContent = '';
 }
 
-// Ao fechar OU recarregar a aba, libera o cadeado imediatamente.
-// fetch com keepalive sobrevive ao fechamento da página (sendBeacon não
-// permite os headers que o Supabase exige). Num refresh, a sessão é
-// retomada no boot (tryRestoreSession reassume o cadeado livre).
-function releaseLockBeacon() {
-  if (!sessionToken || !cloudConfigured()) return;
-  try {
-    const url = `${SUPABASE_URL}/rest/v1/app_lock?id=eq.${LOCK_ID}&holder=eq.${encodeURIComponent(sessionToken)}`;
-    fetch(url, {
-      method: 'PATCH',
-      keepalive: true,
-      headers: {
-        'apikey': SUPABASE_ANON_KEY,
-        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
-        'Content-Type': 'application/json',
-        'Prefer': 'return=minimal'
-      },
-      body: JSON.stringify({ holder: null, expires_at: null })
-    });
-  } catch(e) { /* a expiração de ~2 min cobre se isto falhar */ }
-}
-window.addEventListener('pagehide', releaseLockBeacon);
-window.addEventListener('beforeunload', releaseLockBeacon);
+// IMPORTANTE: NÃO soltamos o cadeado no refresh. Ao recarregar a página, a
+// sessão é retomada (tryRestoreSession) sem brecha. Se a aba for FECHADA, o
+// cadeado expira sozinho em ~2 min (LOCK_TTL_MS) e libera para outra pessoa.
+// O botão "Sair" continua liberando na hora. Isso elimina a corrida que
+// derrubava a sessão logo após um refresh.
 
 /* ── UTILS ── */
 function uid() { return Date.now().toString(36)+Math.random().toString(36).slice(2); }
@@ -1586,6 +1595,55 @@ function cascadeParcelas(lista) {
   return map;
 }
 
+// Para cada parcela, retorna as DATAS que efetivamente a cobriram:
+// pagamentos próprios + crédito (excedente de parcelas pagas a mais), via FIFO.
+// Assim, se alguém paga a mais numa parcela e o excedente cobre a próxima,
+// a próxima mostra a data do pagamento que a quitou.
+function cascadeDatas(lista) {
+  const R = x => Math.round(x*100)/100;
+  const arr = (lista||[]).map(p => ({
+    p,
+    dev: R(p.valorDevido || p.amountDue || 0),
+    caixa: !!p.origemCaixa,
+    pagamentos: (p.pagamentos || p.payments || []).map(pg => ({ valor: R(pg.valor||pg.value||0), data: pg.data||pg.date||'' }))
+  }));
+  const pool = []; // FIFO de excedentes: {valor, data}
+  arr.forEach(x => {
+    let restanteDev = x.dev;
+    x.ownDatas = []; x.pagoProprio = 0;
+    x.pagamentos.forEach(pg => {
+      let v = pg.valor;
+      if (restanteDev > 0 && v > 0) {            // cobre o próprio devido primeiro
+        const usa = Math.min(restanteDev, v);
+        restanteDev = R(restanteDev - usa); v = R(v - usa);
+        x.pagoProprio = R(x.pagoProprio + usa);
+        if (usa > 0.001 && pg.data) x.ownDatas.push(pg.data);
+      }
+      if (v > 0.001 && !x.caixa) pool.push({ valor: v, data: pg.data }); // excedente vira crédito
+    });
+    x.deficit = R(Math.max(0, x.dev - x.pagoProprio));
+  });
+  arr.forEach(x => {
+    x.creditDatas = [];
+    if (x.caixa) return;
+    let need = x.deficit, idx = 0;
+    while (need > 0.001 && idx < pool.length) {
+      const c = pool[idx];
+      if (c.valor <= 0.001) { idx++; continue; }
+      const usa = Math.min(need, c.valor);
+      need = R(need - usa); c.valor = R(c.valor - usa);
+      if (usa > 0.001 && c.data) x.creditDatas.push(c.data);
+      if (c.valor <= 0.001) idx++;
+    }
+  });
+  const map = new Map();
+  arr.forEach(x => {
+    const datas = [...new Set([...x.ownDatas, ...x.creditDatas])].filter(Boolean).sort();
+    map.set(x.p, datas);
+  });
+  return map;
+}
+
 // Calcula total pago e restante de uma lista de parcelas (com cascata de crédito)
 function calcInstallmentsStatus(listaParcelas) {
   const hoje = new Date().toISOString().split('T')[0];
@@ -1651,7 +1709,7 @@ function calcPagoEmExtrasCaixa(listaParcelas) {
 }
 
 function calcGroupTotals(grupo) {
-  const { totalFinal } = calcGrupo(grupo);
+  const { totalFinal, patrocinio } = calcGrupo(grupo);
   const emNucleos = getMembersInFamilies(grupo);
   let totalPago = 0;
 
@@ -1670,12 +1728,81 @@ function calcGroupTotals(grupo) {
       });
     }
   });
-  const restante = Math.max(0, totalFinal - totalPago);
-  const pct = totalFinal > 0 ? Math.min(100,(totalPago/totalFinal)*100) : 0;
+
+  // Patrocínio agora está EMBUTIDO na parcela do patrocinador; somando os
+  // membros/núcleos já entra. O total do aluguel é aluguel cheio quando há patrocinador.
+  const r = grupo.rental || {};
+  const temPatroc = (patrocinio > 0) && patrocinadorExiste(grupo);
+  const totalAluguel = Math.round((totalFinal + (temPatroc ? patrocinio : 0)) * 100) / 100;
+  totalPago = Math.round(totalPago * 100) / 100;
+
+  const restante = Math.max(0, totalAluguel - totalPago);
+  const pct = totalAluguel > 0 ? Math.min(100,(totalPago/totalAluguel)*100) : 0;
   let status = 'Pendente';
-  if (totalPago >= totalFinal && totalFinal > 0) status = 'Pago';
+  if (totalPago >= totalAluguel && totalAluguel > 0) status = 'Pago';
   else if (totalPago > 0) status = 'Parcial';
-  return { totalFinal, totalPaid: totalPago, totalPago, remaining: restante, restante, pct, status };
+  return { totalFinal: totalAluguel, totalPaid: totalPago, totalPago, remaining: restante, restante, pct, status };
+}
+
+/* ── RESOLVEDOR DE "PAGADOR" (membro | núcleo | patrocínio) ── */
+function getInstListByTarget(g, tipo, id) {
+  if (!g) return null;
+  if (tipo === 'member')  { const m=(g.members||[]).find(x=>x.id===id);  return m?m.installments:null; }
+  if (tipo === 'family')  { const f=(g.families||[]).find(x=>x.id===id); return f?f.installments:null; }
+  if (tipo === 'patrocinio') {
+    if (!g.rental) g.rental = {};
+    if (!g.rental.patrocinioInstallments) g.rental.patrocinioInstallments = [];
+    return g.rental.patrocinioInstallments;
+  }
+  return null;
+}
+function getTargetName(g, tipo, id) {
+  if (tipo === 'member')  { const m=(g.members||[]).find(x=>x.id===id);  return m?m.name:''; }
+  if (tipo === 'family')  { const f=(g.families||[]).find(x=>x.id===id); return f?('💜 '+f.name):''; }
+  if (tipo === 'patrocinio') {
+    const r = g.rental||{};
+    return '💛 Patrocínio — ' + (getTargetName(g, r.patrocinadorTipo, r.patrocinadorId) || '?');
+  }
+  return '';
+}
+// Nome de quem patrocina (sem o prefixo de patrocínio)
+function nomePatrocinador(g) {
+  const r = g.rental||{};
+  if (!r.patrocinadorId) return '';
+  return getTargetName(g, r.patrocinadorTipo, r.patrocinadorId);
+}
+// O patrocinador selecionado ainda existe no grupo?
+function patrocinadorExiste(g) {
+  const r = g.rental||{};
+  if (!r.patrocinadorId) return false;
+  if (r.patrocinadorTipo==='member') return (g.members||[]).some(m=>m.id===r.patrocinadorId);
+  if (r.patrocinadorTipo==='family') return (g.families||[]).some(f=>f.id===r.patrocinadorId);
+  return false;
+}
+
+/* ── UI: seletor de patrocinador no modal de aluguel ── */
+function populateSponsorPayer(g, tipoSel, idSel) {
+  const sel = document.getElementById('inputSponsorPayer');
+  if (!sel) return;
+  // Membros que estão dentro de QUALQUER núcleo (eles pagam pelo membro/núcleo)
+  const emNucleoUnico = new Set();
+  (g.families||[]).forEach(f => { if (f.mode==='unique') (f.memberIds||[]).forEach(id=>emNucleoUnico.add(id)); });
+  let html = '<option value="">— selecione —</option>';
+  (g.members||[]).forEach(m => {
+    if (emNucleoUnico.has(m.id)) return; // pago pelo núcleo único
+    html += `<option value="member:${m.id}">${esc(m.name)}</option>`;
+  });
+  (g.families||[]).forEach(f => {
+    if (f.mode==='unique') html += `<option value="family:${f.id}">💜 ${esc(f.name)}</option>`;
+  });
+  sel.innerHTML = html;
+  if (tipoSel && idSel) sel.value = `${tipoSel}:${idSel}`;
+}
+function onSponsorInput() {
+  const wrap = document.getElementById('sponsorPayerWrap');
+  if (!wrap) return;
+  const v = parseMoney(document.getElementById('inputSponsor').value);
+  wrap.style.display = (v > 0) ? '' : 'none';
 }
 
 /* ── GERAÇÃO DE PARCELAS ── */
@@ -1688,6 +1815,11 @@ function reconstruirParcelas(grupo) {
   const datasVencimento = gerarDatasVencimento(refDate, dueDay, parcelas);
   const emNucleos = getMembersInFamilies(grupo);
 
+  // Patrocínio embutido: valor por parcela que o PATROCINADOR paga além da cota
+  const patrocinio = r.patrocinio || r.sponsor || 0;
+  const patrocParcela = (patrocinio > 0 && r.patrocinadorId && parcelas > 0) ? (patrocinio / parcelas) : 0;
+  const ehPatroc = (tipo, id) => patrocParcela > 0 && r.patrocinadorTipo === tipo && r.patrocinadorId === id;
+
   // Helper: separa parcelas normais das parcelas do caixa antes de reconstruir
   const separar = (lista) => {
     const normais = (lista||[]).filter(p => !p.origemCaixa);
@@ -1698,8 +1830,9 @@ function reconstruirParcelas(grupo) {
   // Membros individuais
   (grupo.members||[]).filter(m => !emNucleos.has(m.id)).forEach(m => {
     const { normais, caixa } = separar(m.installments);
+    const valor = valorParcelaCota + (ehPatroc('member', m.id) ? patrocParcela : 0);
     m.installments = [
-      ...construirParcelas(parcelas, valorParcelaCota, datasVencimento, normais),
+      ...construirParcelas(parcelas, valor, datasVencimento, normais),
       ...caixa  // preserva parcelas do caixa sempre no final
     ];
   });
@@ -1707,7 +1840,7 @@ function reconstruirParcelas(grupo) {
   // Núcleos
   (grupo.families||[]).forEach(f => {
     if (f.mode === 'unique') {
-      const valorNucleo = valorParcelaCota * (f.memberIds||[]).length;
+      const valorNucleo = valorParcelaCota * (f.memberIds||[]).length + (ehPatroc('family', f.id) ? patrocParcela : 0);
       const { normais, caixa } = separar(f.installments);
       f.installments = [
         ...construirParcelas(parcelas, valorNucleo, datasVencimento, normais),
@@ -1718,14 +1851,19 @@ function reconstruirParcelas(grupo) {
         const m = (grupo.members||[]).find(x => x.id === mid);
         if (m) {
           const { normais, caixa } = separar(m.installments);
+          const valor = valorParcelaCota + (ehPatroc('member', m.id) ? patrocParcela : 0);
           m.installments = [
-            ...construirParcelas(parcelas, valorParcelaCota, datasVencimento, normais),
+            ...construirParcelas(parcelas, valor, datasVencimento, normais),
             ...caixa
           ];
         }
       });
     }
   });
+
+  // PATROCÍNIO embutido: a parcela do patrocinador já soma cota + patrocínio
+  // (feito acima via patrocParcela). Não há cronograma separado.
+  if (grupo.rental) delete grupo.rental.patrocinioInstallments;
 }
 
 function construirParcelas(quantidade, valorParcela, datas, existentes) {
@@ -1891,6 +2029,9 @@ function openRentalModal() {
   // Define valor apenas se existir, senão deixa vazio
   if (r.valor) setBRLField('inputRentalValue', r.valor); else document.getElementById('inputRentalValue').value='';
   if (r.patrocinio) setBRLField('inputSponsor', r.patrocinio); else document.getElementById('inputSponsor').value='';
+  // Monta a lista de possíveis patrocinadores (membros + núcleos)
+  populateSponsorPayer(g, r.patrocinadorTipo, r.patrocinadorId);
+  onSponsorInput();
   document.getElementById('inputInstallments').value = r.parcelas||1;
   document.getElementById('inputRefDate').value = r.referencia||'';
   document.getElementById('inputDueDay').value = r.diaVencimento||'';
@@ -1911,6 +2052,17 @@ function saveRentalData() {
   if (!g.rental) g.rental={};
   g.rental.valor        = valor;
   g.rental.patrocinio   = readBRLField('inputSponsor');
+  // Patrocinador: obrigatório quando há valor de patrocínio
+  if (g.rental.patrocinio > 0) {
+    const sel = document.getElementById('inputSponsorPayer').value;
+    if (!sel) { showToast('Selecione quem paga o patrocínio.', 'error'); return; }
+    const [tipo, id] = sel.split(':');
+    g.rental.patrocinadorTipo = tipo;
+    g.rental.patrocinadorId   = id;
+  } else {
+    g.rental.patrocinadorTipo = null;
+    g.rental.patrocinadorId   = null;
+  }
   g.rental.parcelas     = parseInt(document.getElementById('inputInstallments').value)||1;
   g.rental.referencia   = document.getElementById('inputRefDate').value;
   g.rental.diaVencimento= parseInt(document.getElementById('inputDueDay').value)||null;
@@ -2046,21 +2198,10 @@ function openPayModal(targetType, targetId, instIdx) {
   const { valorParcelaCota } = calcGrupo(g);
 
   let installmentList, rotulo = '', totalPago = 0, restante = 0;
-  if (targetType==='member') {
-    const m = g.members.find(x=>x.id===targetId);
-    if (!m) return;
-    installmentList = m.installments;
-    const st = calcInstallmentsStatus(installmentList);
-    totalPago = st.totalPaid; restante = st.remaining;
-    rotulo = m.name;
-  } else {
-    const f = (g.families||[]).find(x=>x.id===targetId);
-    if (!f) return;
-    installmentList = f.installments;
-    const st = calcInstallmentsStatus(installmentList);
-    totalPago = st.totalPaid; restante = st.remaining;
-    rotulo = `💜 ${f.name}`;
-  }
+  installmentList = getInstListByTarget(g, targetType, targetId);
+  if (!installmentList) return;
+  { const st = calcInstallmentsStatus(installmentList); totalPago = st.totalPaid; restante = st.remaining; }
+  rotulo = getTargetName(g, targetType, targetId);
   payCtx = { targetType, targetId, instIdx, installmentList };
 
   if (!installmentList || !installmentList.length) {
@@ -2147,15 +2288,9 @@ let editPayCtx = null; // { targetType, targetId, instIdx, payIdx }
 function openEditPayModal(targetType, targetId, instIdx, payIdx) {
   const g = getGroup(); if (!g) return;
   let instList, targetName;
-  if (targetType==='member') {
-    const m = g.members.find(x=>x.id===targetId);
-    if (!m) return;
-    instList = m.installments; targetName = m.name;
-  } else {
-    const f = (g.families||[]).find(x=>x.id===targetId);
-    if (!f) return;
-    instList = f.installments; targetName = `💜 ${f.name}`;
-  }
+  instList = getInstListByTarget(g, targetType, targetId);
+  if (!instList) return;
+  targetName = getTargetName(g, targetType, targetId);
   const p = instList[instIdx]?.payments?.[payIdx] ||
             instList[instIdx]?.pagamentos?.[payIdx];
   if (!p) return;
@@ -2198,13 +2333,7 @@ function saveEditPayment() {
   if (!v||v<=0) { showToast('Informe um valor válido','error'); return; }
 
   let instList;
-  if (editPayCtx.targetType==='member') {
-    const m = g.members.find(x=>x.id===editPayCtx.targetId);
-    if (m) instList = m.installments;
-  } else {
-    const f = (g.families||[]).find(x=>x.id===editPayCtx.targetId);
-    if (f) instList = f.installments;
-  }
+  instList = getInstListByTarget(g, editPayCtx.targetType, editPayCtx.targetId);
   if (!instList) return;
   const parcela = instList[editPayCtx.instIdx];
   // Suporte a pagamentos (PT) e payments (legado)
@@ -2242,14 +2371,7 @@ function confirmDeletePaymentFromEdit() {
   closeModal('modalEditPay');
   showConfirm('Excluir Pagamento','Deseja excluir este pagamento?', () => {
     const g = getGroup(); if (!g) return;
-    let lista;
-    if (editPayCtx.targetType==='member') {
-      const m = g.members.find(x=>x.id===editPayCtx.targetId);
-      if (m) lista = m.installments;
-    } else {
-      const f = (g.families||[]).find(x=>x.id===editPayCtx.targetId);
-      if (f) lista = f.installments;
-    }
+    let lista = getInstListByTarget(g, editPayCtx.targetType, editPayCtx.targetId);
     if (lista && lista[editPayCtx.instIdx]) {
       const pags = lista[editPayCtx.instIdx].pagamentos || lista[editPayCtx.instIdx].payments;
       if (pags) pags.splice(editPayCtx.payIdx, 1);
@@ -2262,9 +2384,7 @@ function confirmDeletePaymentFromEdit() {
 function confirmDeletePayment(tipoAlvo, idAlvo, idxParcela, idxPagamento) {
   showConfirm('Remover Pagamento','Deseja remover este pagamento?', () => {
     const g = getGroup(); if (!g) return;
-    let lista;
-    if (tipoAlvo==='member') { const m=g.members.find(x=>x.id===idAlvo); if(m) lista=m.installments; }
-    else { const f=(g.families||[]).find(x=>x.id===idAlvo); if(f) lista=f.installments; }
+    let lista = getInstListByTarget(g, tipoAlvo, idAlvo);
     if (lista && lista[idxParcela]) {
       const pags = lista[idxParcela].pagamentos || lista[idxParcela].payments;
       if (pags) pags.splice(idxPagamento, 1);
@@ -2289,7 +2409,8 @@ function renderMainContent() {
   document.getElementById('topbarTitle').innerHTML=`${esc(g.name)} <span class="topbar-type-badge">${g.type}</span>`;
   document.getElementById('topbarActions').innerHTML=`
     <button class="btn btn-secondary btn-sm" onclick="openGroupModal('${g.id}')" aria-label="Editar grupo">✏️ Editar</button>
-    <button class="btn btn-secondary btn-sm" onclick="exportPDF()" aria-label="Exportar relatório em PDF" title="Gera relatório completo para impressão/PDF">📄 Relatório</button>
+    <button class="btn btn-secondary btn-sm" onclick="exportPDF()" aria-label="Exportar relatório em PDF" title="Baixa o relatório em PDF">📄 PDF</button>
+    <button class="btn btn-secondary btn-sm" onclick="exportExcel()" aria-label="Exportar relatório em Excel" title="Baixa o relatório em Excel (.xlsx)">📊 Excel</button>
     <button class="btn btn-danger btn-sm" onclick="confirmDeleteGroup('${g.id}')" aria-label="Excluir grupo">🗑 Excluir</button>`;
 
   const calc = calcGrupo(g);
@@ -2474,9 +2595,11 @@ function renderFamilyCard(f, g, calc) {
   if (f.mode === 'unique') {
     // Após rebuildAllInstallments, st.totalDue = soma dos amountDue corretos
     const st = calcInstallmentsStatus(f.installments);
-    // cotaTotal e famInstValue derivados do cálculo atual (não do storage antigo)
-    const famInstValue = calc.valorParcelaCota * memberCount;
-    const cotaTotal = famInstValue * calc.numParcelas;
+    const ehPatroc = g.rental && g.rental.patrocinadorTipo==='family' && g.rental.patrocinadorId===f.id && (calc.patrocinio>0);
+    const patrocParc = ehPatroc && calc.numParcelas>0 ? (calc.patrocinio/calc.numParcelas) : 0;
+    const baseInst   = calc.valorParcelaCota * memberCount;
+    const famInstValue = baseInst + patrocParc;
+    const cotaTotal = baseInst * calc.numParcelas + (ehPatroc ? calc.patrocinio : 0);
     const statusClass = st.status==='Quitado'?'pill-paid':st.status==='Em dia'?'pill-partial':st.status==='Vencido'?'pill-overdue':'pill-pending';
     const pct = cotaTotal > 0 ? Math.min(100, (st.totalPaid / cotaTotal) * 100) : 0;
     const barC = pct>=100?'s':pct>0?'p':'d';
@@ -2499,13 +2622,13 @@ function renderFamilyCard(f, g, calc) {
         </div>
         <div class="member-body" id="body_family_${f.id}">
           <div class="summary-boxes">
-            <div class="sum-box"><div class="sum-box-label">Cota Total</div><div class="sum-box-value a">${fmtCur(cotaTotal)}</div></div>
-            <div class="sum-box"><div class="sum-box-label">Parcela/mês</div><div class="sum-box-value">${fmtCur(famInstValue)}</div><div style="font-size:10px;color:#5a5a70;margin-top:2px;">${fmtCur(calc.valorParcelaCota)} × ${memberCount} membros</div></div>
+            <div class="sum-box"><div class="sum-box-label">${ehPatroc?'Cota + Patrocínio':'Cota Total'}</div><div class="sum-box-value a">${fmtCur(cotaTotal)}</div></div>
+            <div class="sum-box"><div class="sum-box-label">Parcela/mês</div><div class="sum-box-value">${fmtCur(famInstValue)}</div><div style="font-size:10px;color:#5a5a70;margin-top:2px;">${fmtCur(calc.valorParcelaCota)} × ${memberCount}${ehPatroc?` + 💛 ${fmtCur(patrocParc)}`:''}</div></div>
             <div class="sum-box"><div class="sum-box-label">Pago</div><div class="sum-box-value s">${fmtCur(st.totalPaid)}</div></div>
             <div class="sum-box"><div class="sum-box-label">Restante</div><div class="sum-box-value ${remaining>0?'d':'s'}">${fmtCur(remaining)}</div></div>
           </div>
           <div style="font-size:11px;color:#5a5a70;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Parcelas (${calc.numParcelas}x de ${fmtCur(famInstValue)})</div>
-          <div class="installment-list">${(f.installments||[]).map((inst,i) => renderInstRow(inst, i, 'family', f.id, f.installments)).join('')}</div>
+          <div class="installment-list">${(f.installments||[]).map((inst,i) => renderInstRow(inst, i, 'family', f.id, f.installments, ehPatroc?{casa:baseInst,patroc:patrocParc}:null)).join('')}</div>
         </div>
       </div>`;
   } else {
@@ -2561,10 +2684,18 @@ function renderFamilyCard(f, g, calc) {
 }
 
 /* ── RENDER MEMBER CARD (individual) ── */
+/* ── RENDER MEMBER CARD ── */
 function renderMemberCard(m, g, calc, type) {
   const st = calcInstallmentsStatus(m.installments);
   const statusClass = st.status==='Quitado'?'pill-paid':st.status==='Em dia'?'pill-partial':st.status==='Vencido'?'pill-overdue':'pill-pending';
   const pct = st.pct; const barC = pct>=100?'s':pct>0?'p':'d';
+  // É o patrocinador? Então a parcela soma cota + patrocínio
+  const r = g.rental||{};
+  const ehPatroc = r.patrocinadorTipo==='member' && r.patrocinadorId===m.id && (calc.patrocinio>0);
+  const patrocParc = ehPatroc && calc.numParcelas>0 ? (calc.patrocinio/calc.numParcelas) : 0;
+  const cotaParc   = calc.valorParcelaCota;
+  const parcelaTot = cotaParc + patrocParc;
+  const cotaTot    = calc.valorPorCota + (ehPatroc ? calc.patrocinio : 0);
   return `
     <div class="member-card">
       <div class="member-header" onclick="toggleBody('member','${m.id}')" role="button" tabindex="0">
@@ -2572,7 +2703,7 @@ function renderMemberCard(m, g, calc, type) {
         <div class="member-info">
           <div class="member-name">${esc(m.name)}</div>
           <div class="member-meta">
-            ${fmtCur(st.totalPaid)} pago de ${fmtCur(calc.valorPorCota)} · ${calc.numParcelas}x de ${fmtCur(calc.valorParcelaCota)}/mês
+            ${fmtCur(st.totalPaid)} pago de ${fmtCur(cotaTot)} · ${calc.numParcelas}x de ${fmtCur(parcelaTot)}/mês
             ${(() => { const hoje=new Date().toISOString().split('T')[0]; const vencidas=(m.installments||[]).filter(p=>{const vc=p.vencimento||p.due;return vc&&vc<hoje&&calcInstStatus(p, m.installments).status!=='Pago';}).length; return vencidas>0?`<span class="overdue-badge">${vencidas} vencida${vencidas>1?'s':''}</span>`:''; })()}
           </div>
           <div class="progress-wrap"><div class="progress-bar ${barC}" style="width:${pct}%"></div></div>
@@ -2586,19 +2717,19 @@ function renderMemberCard(m, g, calc, type) {
       </div>
       <div class="member-body" id="body_member_${m.id}">
         <div class="summary-boxes">
-          <div class="sum-box"><div class="sum-box-label">Cota Total</div><div class="sum-box-value a">${fmtCur(calc.valorPorCota)}</div></div>
-          <div class="sum-box"><div class="sum-box-label">Parcela mensal</div><div class="sum-box-value">${fmtCur(calc.valorParcelaCota)}/mês</div></div>
+          <div class="sum-box"><div class="sum-box-label">${ehPatroc?'Cota + Patrocínio':'Cota Total'}</div><div class="sum-box-value a">${fmtCur(cotaTot)}</div></div>
+          <div class="sum-box"><div class="sum-box-label">Parcela mensal</div><div class="sum-box-value">${fmtCur(parcelaTot)}/mês</div></div>
           <div class="sum-box"><div class="sum-box-label">Pago</div><div class="sum-box-value s">${fmtCur(st.totalPaid)}</div></div>
           <div class="sum-box"><div class="sum-box-label">Restante</div><div class="sum-box-value ${st.remaining>0?'d':'s'}">${fmtCur(st.remaining)}</div></div>
         </div>
-        <div style="font-size:11px;color:#5a5a70;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Parcelas (${calc.numParcelas}x de ${fmtCur(calc.valorParcelaCota)})</div>
-        <div class="installment-list">${(m.installments||[]).map((inst,i) => renderInstRow(inst, i, 'member', m.id, m.installments)).join('')}</div>
+        <div style="font-size:11px;color:#5a5a70;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Parcelas (${calc.numParcelas}x de ${fmtCur(parcelaTot)})</div>
+        <div class="installment-list">${(m.installments||[]).map((inst,i) => renderInstRow(inst, i, 'member', m.id, m.installments, ehPatroc?{casa:cotaParc,patroc:patrocParc}:null)).join('')}</div>
       </div>
     </div>`;
 }
 
 /* ── RENDERIZA LINHA DE PARCELA ── */
-function renderInstRow(parcela, i, tipoAlvo, idAlvo, lista) {
+function renderInstRow(parcela, i, tipoAlvo, idAlvo, lista, patrocInfo) {
   const { pago, devido, restante, status } = calcInstStatus(parcela, lista);
   const vencimento = parcela.vencimento || parcela.due || '';
   const pagamentos = parcela.pagamentos || parcela.payments || [];
@@ -2608,6 +2739,8 @@ function renderInstRow(parcela, i, tipoAlvo, idAlvo, lista) {
   const pct  = devido > 0 ? Math.min(100,(pago/devido)*100) : 0;
   const barC = pct>=100?'s':pct>0?'p':'d';
   const idCorpo = `instBody_${tipoAlvo}_${idAlvo}_${i}`;
+  const breakdownHTML = (patrocInfo && !parcela.origemCaixa)
+    ? `<div class="inst-breakdown">💛 Patrocínio ${fmtCur(patrocInfo.patroc)} + 🏠 Casa ${fmtCur(patrocInfo.casa)}</div>` : '';
 
   const pagamentosHTML = pagamentos.map((pg, pi) => {
     const valPg  = pg.valor  || pg.value    || 0;
@@ -2636,6 +2769,7 @@ function renderInstRow(parcela, i, tipoAlvo, idAlvo, lista) {
             ? `💰 Caixa <span class="overdue-badge" style="background:rgba(87,229,160,.15);color:#57e5a0;">EXTRA</span>`
             : `Parcela ${i+1}${vencida?' <span class="overdue-badge">Vencida</span>':''}`
           }
+          ${breakdownHTML}
         </div>
         <div>
           <div class="date-edit-wrap">
@@ -2665,9 +2799,7 @@ function renderInstRow(parcela, i, tipoAlvo, idAlvo, lista) {
 
 function atualizarDataParcela(tipoAlvo, idAlvo, idxParcela, valor) {
   const g = getGroup(); if (!g) return;
-  let lista;
-  if (tipoAlvo==='member') { const m=g.members.find(x=>x.id===idAlvo); if(m) lista=m.installments; }
-  else { const f=(g.families||[]).find(x=>x.id===idAlvo); if(f) lista=f.installments; }
+  let lista = getInstListByTarget(g, tipoAlvo, idAlvo);
   if (lista && lista[idxParcela]) {
     lista[idxParcela].vencimento = valor;
     lista[idxParcela].due = valor;
@@ -2686,9 +2818,7 @@ function toggleInst(id) {
 }
 function getNextOpenInst(targetType, targetId) {
   const g = getGroup(); if (!g) return null;
-  let instList = [];
-  if (targetType==='member') { const m=g.members.find(x=>x.id===targetId); if(m) instList=m.installments||[]; }
-  else { const f=(g.families||[]).find(x=>x.id===targetId); if(f) instList=f.installments||[]; }
+  let instList = getInstListByTarget(g, targetType, targetId) || [];
   if (!instList.length) return null;
   for (let i=0;i<instList.length;i++) { if (calcInstStatus(instList[i], instList).status!=='Pago') return i; }
   return null; // todas pagas
@@ -3496,7 +3626,320 @@ function importJSON(event) {
 }
 
 /* ── PDF ── */
-function exportPDF() {
+/* ── CARREGAMENTO SOB DEMANDA DAS BIBLIOTECAS (PDF / Excel) ── */
+function carregarScript(urls) {
+  return new Promise((resolve, reject) => {
+    let i = 0;
+    const tenta = () => {
+      if (i >= urls.length) { reject(new Error('todas as fontes falharam')); return; }
+      const s = document.createElement('script');
+      s.src = urls[i]; s.async = true;
+      s.onload = () => resolve();
+      s.onerror = () => { i++; tenta(); };
+      document.head.appendChild(s);
+    };
+    tenta();
+  });
+}
+async function garantirPDFLibs() {
+  if (!(window.jspdf && window.jspdf.jsPDF)) {
+    try { await carregarScript([
+      'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js',
+      'https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js',
+      'https://unpkg.com/jspdf@2.5.2/dist/jspdf.umd.min.js'
+    ]); } catch(e) { return false; }
+  }
+  if (!(window.jspdf && window.jspdf.jsPDF)) return false;
+  const API = window.jspdf.jsPDF.API;
+  if (!(API && typeof API.autoTable === 'function')) {
+    try { await carregarScript([
+      'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js',
+      'https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js',
+      'https://unpkg.com/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js'
+    ]); } catch(e) { return false; }
+  }
+  return !!(window.jspdf && window.jspdf.jsPDF && window.jspdf.jsPDF.API
+    && typeof window.jspdf.jsPDF.API.autoTable === 'function');
+}
+async function garantirXLSX() {
+  if (window.XLSX) return true;
+  try { await carregarScript([
+    'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
+    'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js',
+    'https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js'
+  ]); } catch(e) { return false; }
+  return !!window.XLSX;
+}
+
+/* ── RELATÓRIO: coleta de dados compartilhada (PDF e Excel) ── */
+function coletarRelatorio(g) {
+  const calc   = calcGrupo(g);
+  const totals = calcGroupTotals(g);
+  const r      = g.rental || {};
+  const inFam  = getMembersInFamilies(g);
+  const temPatroc = calc.patrocinio > 0 && patrocinadorExiste(g);
+  const patrocParc = (temPatroc && calc.numParcelas>0) ? calc.patrocinio/calc.numParcelas : 0;
+
+  // Monta a lista de "pagadores" (núcleos únicos + integrantes individuais)
+  const pessoas = [];
+  (g.families||[]).forEach(f => {
+    if (f.mode === 'unique') {
+      const mems = (g.members||[]).filter(m => (f.memberIds||[]).includes(m.id));
+      const ehPatroc = r.patrocinadorTipo==='family' && r.patrocinadorId===f.id && temPatroc;
+      pessoas.push({ nome: f.name + ' (núcleo)', lista: f.installments, ehPatroc,
+        casaParc: calc.valorParcelaCota*mems.length, patrocParc: ehPatroc?patrocParc:0 });
+    } else {
+      (f.memberIds||[]).forEach(mid => {
+        const m = (g.members||[]).find(x=>x.id===mid);
+        if (m) {
+          const ehPatroc = r.patrocinadorTipo==='member' && r.patrocinadorId===m.id && temPatroc;
+          pessoas.push({ nome: m.name + ' ('+f.name+')', lista: m.installments, ehPatroc,
+            casaParc: calc.valorParcelaCota, patrocParc: ehPatroc?patrocParc:0 });
+        }
+      });
+    }
+  });
+  (g.members||[]).filter(m => !inFam.has(m.id)).forEach(m => {
+    const ehPatroc = r.patrocinadorTipo==='member' && r.patrocinadorId===m.id && temPatroc;
+    pessoas.push({ nome: m.name, lista: m.installments, ehPatroc,
+      casaParc: calc.valorParcelaCota, patrocParc: ehPatroc?patrocParc:0 });
+  });
+
+  return { calc, totals, r, inFam, temPatroc, patrocParc, pessoas };
+}
+
+const LEGENDA_CAIXA = 'Cota extra (Caixa): valor adicional cobrado fora das parcelas normais do aluguel, direcionado ao caixa do grupo (ex.: reforço de saldo, despesas extras).';
+
+/* ── EXPORTA PDF (download direto) ── */
+async function exportPDF() {
+  const g = getGroup();
+  if (!g) { showToast('Selecione um grupo','warn'); return; }
+  showToast('Gerando PDF...','info');
+  const ok = await garantirPDFLibs();
+  if (!ok) { showToast('Não foi possível carregar o gerador de PDF. Verifique sua conexão e tente de novo.','error'); return; }
+  try {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit:'pt', format:'a4' });
+    const { calc, totals, r, temPatroc, pessoas } = coletarRelatorio(g);
+    const pageW = doc.internal.pageSize.getWidth();
+    const pageH = doc.internal.pageSize.getHeight();
+    const M = 40;
+    const fmt = v => fmtCur(v);
+    let usouCaixaExtra = false;
+
+    // Cabeçalho
+    doc.setFillColor(30,30,39); doc.rect(0,0,pageW,64,'F');
+    doc.setTextColor(200,255,87); doc.setFont('helvetica','bold'); doc.setFontSize(17);
+    doc.text('AluguelPRO — Relatório', M, 30);
+    doc.setTextColor(180,180,190); doc.setFont('helvetica','normal'); doc.setFontSize(9.5);
+    doc.text(`${g.name} · ${g.type} · gerado em ${new Date().toLocaleDateString('pt-BR')}`, M, 48);
+
+    // Resumo do aluguel
+    const refDate = r.referencia || r.refDate || '';
+    const resumo = [];
+    if (refDate) resumo.push(['Referência', fmtMonthYear(refDate)]);
+    if (r.endereco) resumo.push(['Endereço', r.endereco]);
+    resumo.push(
+      ['Valor do aluguel', fmt(calc.aluguel)],
+      ['Patrocínio/Desconto', fmt(calc.patrocinio)],
+      ['Valor final (dividido)', fmt(calc.totalFinal)],
+      ['Integrantes (cotas)', String(calc.cotas)],
+      ['Por integrante', fmt(calc.valorPorCota)],
+      ['Parcelamento', `${calc.numParcelas}x`],
+      ['Parcela por pessoa', `${fmt(calc.valorParcelaCota)}/mês`],
+      ['Dia de vencimento', (r.diaVencimento||r.dueDay) ? ('Dia '+(r.diaVencimento||r.dueDay)) : '—'],
+      ['Total pago', fmt(totals.totalPaid)],
+      ['Restante', fmt(totals.remaining)],
+      ['Status geral', totals.status]
+    );
+    doc.autoTable({
+      startY: 80,
+      head: [['Dados do aluguel', '']],
+      body: resumo,
+      theme: 'grid',
+      styles: { fontSize: 9, cellPadding: 4, textColor: [40,40,40] },
+      headStyles: { fillColor: [30,30,39], textColor: [200,255,87], fontStyle:'bold' },
+      columnStyles: { 0: { fontStyle:'bold', cellWidth: 200 } },
+      margin: { left: M, right: M }
+    });
+    let y = doc.lastAutoTable.finalY + 14;
+
+    if (temPatroc) {
+      const nome = nomePatrocinador(g).replace(/^💛\s*/,'').replace(/^💜\s*/,'').replace('💜 ','');
+      doc.setFont('helvetica','italic'); doc.setFontSize(8.5); doc.setTextColor(150,110,0);
+      const linha = `Patrocínio de ${fmt(calc.patrocinio)} pago por ${nome}, somado às parcelas dele (${fmt(calc.valorParcelaCota)} casa + ${fmt((calc.patrocinio/calc.numParcelas))} patrocínio por mês).`;
+      doc.text(doc.splitTextToSize(linha, pageW - M*2), M, y); y += 22;
+      doc.setFont('helvetica','normal'); doc.setTextColor(40,40,40);
+    }
+
+    // Tabela por pessoa
+    pessoas.forEach(p => {
+      if (y > pageH - 110) { doc.addPage(); y = M; }
+      doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(20,20,20);
+      doc.text(p.nome, M, y); y += 4;
+      if (p.ehPatroc) {
+        doc.setFont('helvetica','italic'); doc.setFontSize(8); doc.setTextColor(150,110,0);
+        doc.text(`Patrocinador — cada parcela: patrocinio ${fmt(p.patrocParc)} + casa ${fmt(p.casaParc)}`, M, y+10);
+        y += 12; doc.setFont('helvetica','normal'); doc.setTextColor(40,40,40);
+      }
+      const datasMap = cascadeDatas(p.lista);
+      const body = (p.lista||[]).map((inst,i) => {
+        const { pago, devido, restante, status } = calcInstStatus(inst, p.lista);
+        const venc = shortDate(inst.vencimento||inst.due||'');
+        const datasPg = (datasMap.get(inst)||[]).map(d => shortDate(d)).join(', ') || '—';
+        let item;
+        if (inst.origemCaixa) { item = 'Cota extra (Caixa)'; usouCaixaExtra = true; }
+        else item = `Parcela ${i+1}`;
+        return [item, venc, fmt(devido), fmt(pago), datasPg, fmt(restante), status];
+      });
+      doc.autoTable({
+        startY: y + 6,
+        head: [['Item','Venc.','Valor','Pago','Data pgto','Restante','Status']],
+        body,
+        theme: 'striped',
+        styles: { fontSize: 8, cellPadding: 2.5 },
+        headStyles: { fillColor: [240,240,240], textColor: [40,40,40], fontStyle:'bold' },
+        margin: { left: M, right: M },
+        didParseCell: (d) => { if (d.section==='body' && d.row.raw[0]==='Cota extra (Caixa)') d.cell.styles.textColor = [26,122,74]; }
+      });
+      y = doc.lastAutoTable.finalY + 14;
+    });
+
+    // Despesas
+    const despesas = g.despesas || [];
+    if (despesas.length) {
+      if (y > pageH - 110) { doc.addPage(); y = M; }
+      const totD = calcTotalDespesas(g);
+      doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(20,20,20);
+      doc.text(`Despesas — total ${fmt(totD.totalValor)} · pago ${fmt(totD.totalPago)} · restante ${fmt(totD.totalRestante)}`, M, y);
+      doc.autoTable({
+        startY: y + 6,
+        head: [['Descrição','Data','Valor','Por pessoa','Status']],
+        body: despesas.map(d => [ d.nome + (d.obs?` (${d.obs})`:''), fmtDate(d.data), fmt(d.valor), fmt(calcRateioPorPessoa(d,g)), statusDespesa(d,g) ]),
+        theme: 'striped', styles:{ fontSize:8.5, cellPadding:3 },
+        headStyles:{ fillColor:[240,240,240], textColor:[40,40,40], fontStyle:'bold' }, margin:{ left:M, right:M }
+      });
+      y = doc.lastAutoTable.finalY + 14;
+    }
+
+    // Caixa
+    const movimentos = g.caixa || [];
+    if (movimentos.length || usouCaixaExtra) {
+      if (y > pageH - 110) { doc.addPage(); y = M; }
+      const saldo = calcSaldoCaixa(g);
+      doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(20,20,20);
+      doc.text(`Caixa — saldo atual ${fmt(saldo)}`, M, y);
+      if (movimentos.length) {
+        doc.autoTable({
+          startY: y + 6,
+          head: [['Tipo','Descrição','Data','Valor']],
+          body: movimentos.map(m => [ m.tipo==='entrada'?'Entrada':'Saída', m.descricao||'—', fmtDate(m.data), (m.tipo==='entrada'?'+':'-')+fmt(m.valor) ]),
+          theme: 'striped', styles:{ fontSize:8.5, cellPadding:3 },
+          headStyles:{ fillColor:[240,240,240], textColor:[40,40,40], fontStyle:'bold' }, margin:{ left:M, right:M }
+        });
+        y = doc.lastAutoTable.finalY + 10;
+      } else { y += 8; }
+    }
+
+    // Legenda da cota extra (se houve)
+    if (usouCaixaExtra) {
+      if (y > pageH - 60) { doc.addPage(); y = M; }
+      doc.setFont('helvetica','italic'); doc.setFontSize(8); doc.setTextColor(110,110,120);
+      doc.text(doc.splitTextToSize('* ' + LEGENDA_CAIXA, pageW - M*2), M, y);
+    }
+
+    // Rodapé com numeração
+    const n = doc.internal.getNumberOfPages();
+    for (let i=1;i<=n;i++){ doc.setPage(i); doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(150,150,160);
+      doc.text(`Página ${i}/${n}`, pageW - M, pageH - 18, { align:'right' }); }
+
+    const nomeArq = `Relatorio_${g.name.replace(/[^\w\-]+/g,'_')}.pdf`;
+    doc.save(nomeArq);
+    showToast('PDF gerado','success');
+  } catch(e) {
+    console.error('exportPDF erro', e);
+    showToast('Falha ao gerar o PDF. Tente novamente.','error');
+  }
+}
+
+/* ── EXPORTA EXCEL (.xlsx) ── */
+async function exportExcel() {
+  const g = getGroup();
+  if (!g) { showToast('Selecione um grupo','warn'); return; }
+  showToast('Gerando Excel...','info');
+  const ok = await garantirXLSX();
+  if (!ok) { showToast('Não foi possível carregar o gerador de Excel. Verifique sua conexão e tente de novo.','error'); return; }
+  try {
+    const { calc, totals, r, pessoas, temPatroc } = coletarRelatorio(g);
+    const wb = XLSX.utils.book_new();
+    const refDate = r.referencia || r.refDate || '';
+
+    // Resumo
+    const resumo = [
+      ['AluguelPRO — Relatório'],
+      ['Grupo', g.name], ['Tipo', g.type], ['Gerado em', new Date().toLocaleString('pt-BR')],
+      [],
+      ['Referência', refDate ? fmtMonthYear(refDate) : '—'],
+      ['Endereço', r.endereco || '—'],
+      ['Valor do aluguel', calc.aluguel],
+      ['Patrocínio/Desconto', calc.patrocinio],
+      ['Valor final (dividido)', calc.totalFinal],
+      ['Integrantes (cotas)', calc.cotas],
+      ['Por integrante', calc.valorPorCota],
+      ['Parcelamento (x)', calc.numParcelas],
+      ['Parcela por pessoa/mês', calc.valorParcelaCota],
+      ['Total pago', totals.totalPaid],
+      ['Restante', totals.remaining],
+      ['Status geral', totals.status],
+    ];
+    if (temPatroc) resumo.push([], ['Patrocinador', nomePatrocinador(g).replace(/^💛\s*/,'').replace(/^💜\s*/,'')],
+      ['Patrocínio/mês', calc.patrocinio/calc.numParcelas]);
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(resumo), 'Resumo');
+
+    // Parcelas
+    const linhas = [['Pessoa / Núcleo','Item','Vencimento','Valor','Pago','Data(s) pgto','Restante','Status','Tipo']];
+    pessoas.forEach(p => {
+      const datasMap = cascadeDatas(p.lista);
+      (p.lista||[]).forEach((inst,i) => {
+        const { pago, devido, restante, status } = calcInstStatus(inst, p.lista);
+        const datasPg = (datasMap.get(inst)||[]).map(d => fmtDate(d)).join(', ');
+        linhas.push([
+          p.nome,
+          inst.origemCaixa ? 'Cota extra (Caixa)' : ('Parcela '+(i+1)),
+          inst.vencimento || inst.due || '',
+          devido, pago, datasPg, restante, status,
+          inst.origemCaixa ? 'Cota extra p/ caixa' : (p.ehPatroc ? 'Casa + Patrocínio' : 'Normal')
+        ]);
+      });
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(linhas), 'Parcelas');
+
+    // Despesas
+    const despesas = g.despesas || [];
+    if (despesas.length) {
+      const dl = [['Descrição','Observação','Data','Valor','Por pessoa','Status']];
+      despesas.forEach(d => dl.push([ d.nome, d.obs||'', d.data||'', d.valor, calcRateioPorPessoa(d,g), statusDespesa(d,g) ]));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(dl), 'Despesas');
+    }
+
+    // Caixa
+    const movimentos = g.caixa || [];
+    if (movimentos.length) {
+      const cl = [['Saldo atual', calcSaldoCaixa(g)], [], ['Tipo','Descrição','Data','Valor']];
+      movimentos.forEach(m => cl.push([ m.tipo==='entrada'?'Entrada':'Saída', m.descricao||'', m.data||'', (m.tipo==='entrada'?1:-1)*m.valor ]));
+      cl.push([], ['*', LEGENDA_CAIXA]);
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(cl), 'Caixa');
+    }
+
+    XLSX.writeFile(wb, `Relatorio_${g.name.replace(/[^\w\-]+/g,'_')}.xlsx`);
+    showToast('Excel gerado','success');
+  } catch(e) {
+    console.error('exportExcel erro', e);
+    showToast('Falha ao gerar Excel.','error');
+  }
+}
+
+function exportPDFPrintFallback() {
   const g = getGroup();
   if (!g) { showToast('Selecione um grupo','warn'); return; }
 
@@ -3543,7 +3986,7 @@ function exportPDF() {
         </tr>`;
       }).join('');
       return `<tr>
-        <td><strong>Parcela ${i+1}</strong></td>
+        <td><strong>${inst.origemCaixa ? 'Cota extra (Caixa)' : 'Parcela '+(i+1)}</strong></td>
         <td>${shortDate(venc)}</td>
         <td>${fmtCur(devido)}</td>
         <td>${fmtCur(restante)}</td>
