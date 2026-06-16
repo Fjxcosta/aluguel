@@ -1,0 +1,72 @@
+name: Supabase keep-alive + backup diário
+
+# Roda todo dia. Faz três coisas de uma vez:
+#  1) Lê o estado no Supabase  -> mantém o projeto fora da pausa de 7 dias
+#  2) Grava um backup do dia na tabela app_backups (mantém 30 dias)
+#  3) Atualiza um arquivo no repo e faz commit -> mantém ESTE workflow vivo
+#     (o GitHub desativa workflows agendados após 60 dias sem atividade no repo)
+#     e deixa em backups/backup-latest.json um arquivo pronto para restaurar.
+
+on:
+  schedule:
+    - cron: '17 6 * * *'    # todo dia ~06:17 UTC (~03:17 horário de Brasília)
+  workflow_dispatch: {}      # permite rodar manualmente pelo botão "Run workflow"
+
+permissions:
+  contents: write            # necessário para o commit de keep-alive
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Baixar o repositório
+        uses: actions/checkout@v4
+
+      - name: Backup + keep-alive
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET: ${{ secrets.SUPABASE_SECRET }}
+        run: |
+          set -euo pipefail
+          mkdir -p backups .github
+          DIA=$(date -u +'%Y-%m-%d')
+
+          echo "1) Lendo o estado atual (isto já mantém o Supabase ativo)..."
+          curl -sS -f \
+            -H "apikey: ${SUPABASE_SECRET}" \
+            -H "Authorization: Bearer ${SUPABASE_SECRET}" \
+            "${SUPABASE_URL}/rest/v1/app_state?id=eq.1&select=data" \
+            -o resp.json
+
+          # Extrai só o objeto de dados
+          jq '.[0].data // {}' resp.json > backups/backup-latest.json
+          echo "   Tamanho do backup: $(wc -c < backups/backup-latest.json) bytes"
+
+          echo "2) Gravando backup do dia na tabela app_backups (upsert por dia)..."
+          PAYLOAD=$(jq -c --arg dia "$DIA" '{dia:$dia, data:(.[0].data // {})}' resp.json)
+          curl -sS -f -X POST \
+            -H "apikey: ${SUPABASE_SECRET}" \
+            -H "Authorization: Bearer ${SUPABASE_SECRET}" \
+            -H "Content-Type: application/json" \
+            -H "Prefer: resolution=merge-duplicates,return=minimal" \
+            "${SUPABASE_URL}/rest/v1/app_backups?on_conflict=dia" \
+            -d "${PAYLOAD}"
+
+          echo "3) Limpando backups com mais de 30 dias..."
+          LIMITE=$(date -u -d '30 days ago' +'%Y-%m-%d')
+          curl -sS -X DELETE \
+            -H "apikey: ${SUPABASE_SECRET}" \
+            -H "Authorization: Bearer ${SUPABASE_SECRET}" \
+            -H "Prefer: return=minimal" \
+            "${SUPABASE_URL}/rest/v1/app_backups?dia=lt.${LIMITE}" || true
+
+          # Marcador que muda todo dia -> garante um commit -> mantém o workflow vivo
+          date -u +'%Y-%m-%dT%H:%M:%SZ' > .github/last-keepalive.txt
+
+      - name: Commit do backup (keep-alive do workflow)
+        run: |
+          git config user.name  "backup-bot"
+          git config user.email "backup-bot@users.noreply.github.com"
+          git add -A
+          git commit -m "Backup automático + keep-alive ($(date -u +'%Y-%m-%d'))" || echo "Sem alterações."
+          git push || echo "Nada a enviar."
