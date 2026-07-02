@@ -718,8 +718,15 @@
             },
             {
               "id": "mooavarf1k5fj5eyzu1",
-              "pagamentos": [],
-              "vencimento": "2026-07-04",
+              "due": "2026-07-01",
+              "pagamentos": [
+                {
+                  "id": "mr2qjvuozt9tv7o2inc",
+                  "data": "2026-07-01",
+                  "valor": 917.42
+                }
+              ],
+              "vencimento": "2026-07-01",
               "valorDevido": 917.4163636363636
             },
             {
