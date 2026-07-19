@@ -442,13 +442,7 @@
             },
             {
               "id": "mooau8b8bd5oxrhwogv",
-              "pagamentos": [
-                {
-                  "id": "mrhrxe4eiqzmhzjqi6",
-                  "data": "2026-07-02",
-                  "valor": 300
-                }
-              ],
+              "pagamentos": [],
               "vencimento": "2026-08-04",
               "valorDevido": 229.3540909090909
             },
