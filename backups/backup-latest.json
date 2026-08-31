@@ -372,7 +372,13 @@
             },
             {
               "id": "mooau2kw5szgn7gzzg7",
-              "pagamentos": [],
+              "pagamentos": [
+                {
+                  "id": "mtg13vnowvoa18cmk2",
+                  "data": "2026-08-30",
+                  "valor": 229.35
+                }
+              ],
               "vencimento": "2026-09-04",
               "valorDevido": 229.3540909090909
             },
@@ -442,7 +448,13 @@
             },
             {
               "id": "mooau8b8bd5oxrhwogv",
-              "pagamentos": [],
+              "pagamentos": [
+                {
+                  "id": "mtg14ls9grpqdojxo6",
+                  "data": "2026-08-30",
+                  "valor": 300
+                }
+              ],
               "vencimento": "2026-08-04",
               "valorDevido": 229.3540909090909
             },
@@ -719,7 +731,13 @@
             },
             {
               "id": "mooauxat2hsg2oejlff",
-              "pagamentos": [],
+              "pagamentos": [
+                {
+                  "id": "mtg15ajsolpn36vcmmp",
+                  "data": "2026-08-30",
+                  "valor": 689
+                }
+              ],
               "vencimento": "2026-09-04",
               "valorDevido": 688.0622727272727
             },
