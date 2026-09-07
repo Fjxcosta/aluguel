@@ -538,7 +538,13 @@
             },
             {
               "id": "mooauc1wey1sqf5vm9h",
-              "pagamentos": [],
+              "pagamentos": [
+                {
+                  "id": "mtq1eet229mqja3dbyk",
+                  "data": "2026-09-02",
+                  "valor": 673.02
+                }
+              ],
               "vencimento": "2026-09-04",
               "valorDevido": 673.0207575757576
             },
@@ -819,7 +825,13 @@
             },
             {
               "id": "mooavarfhio0fmuf52s",
-              "pagamentos": [],
+              "pagamentos": [
+                {
+                  "id": "mtq1eo4rx2qswsf82i",
+                  "data": "2026-09-01",
+                  "valor": 917.42
+                }
+              ],
               "vencimento": "2026-09-04",
               "valorDevido": 917.4163636363636
             },
