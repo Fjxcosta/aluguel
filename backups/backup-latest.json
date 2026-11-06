@@ -384,14 +384,26 @@
             },
             {
               "id": "mooau2kwqld8d1z6crf",
-              "pagamentos": [],
+              "pagamentos": [
+                {
+                  "id": "mw3qevihs8l1fu28zes",
+                  "data": "2026-11-05",
+                  "valor": 189.4
+                }
+              ],
               "vencimento": "2026-10-04",
               "valorDevido": 229.3540909090909
             },
             {
               "id": "mork7oabrbd3g9mq79",
               "descCaixa": "Gasto Mercado",
-              "pagamentos": [],
+              "pagamentos": [
+                {
+                  "id": "mw3qf3yayh24h3aculi",
+                  "data": "2026-11-05",
+                  "valor": 110
+                }
+              ],
               "vencimento": "2026-11-04",
               "origemCaixa": true,
               "valorDevido": 270
@@ -466,7 +478,13 @@
             },
             {
               "id": "mooau8b8eme83gbykg7",
-              "pagamentos": [],
+              "pagamentos": [
+                {
+                  "id": "mw3w1utviahmy74hjsb",
+                  "data": "2026-10-07",
+                  "valor": 177
+                }
+              ],
               "vencimento": "2026-10-04",
               "valorDevido": 229.3540909090909
             },
@@ -550,14 +568,26 @@
             },
             {
               "id": "mooauc1wshyotyzmu3",
-              "pagamentos": [],
+              "pagamentos": [
+                {
+                  "id": "mw3qfjvcu8skt4qq0e",
+                  "data": "2026-11-05",
+                  "valor": 673.02
+                }
+              ],
               "vencimento": "2026-10-04",
               "valorDevido": 673.0207575757576
             },
             {
               "id": "mork7oab9hefd8nmqyo",
               "descCaixa": "Gasto Mercado",
-              "pagamentos": [],
+              "pagamentos": [
+                {
+                  "id": "mw3qfybi2dnmfg2tmbr",
+                  "data": "2026-11-01",
+                  "valor": 270
+                }
+              ],
               "vencimento": "2026-11-04",
               "origemCaixa": true,
               "valorDevido": 270
@@ -647,7 +677,13 @@
             {
               "id": "mork7oabspvifyak7t9",
               "descCaixa": "Gasto Mercado",
-              "pagamentos": [],
+              "pagamentos": [
+                {
+                  "id": "mw3qg50ro017pil8p1",
+                  "data": "2026-11-01",
+                  "valor": 270
+                }
+              ],
               "vencimento": "2026-11-04",
               "origemCaixa": true,
               "valorDevido": 270
@@ -837,14 +873,26 @@
             },
             {
               "id": "mooavarfok6kvngiz5n",
-              "pagamentos": [],
+              "pagamentos": [
+                {
+                  "id": "mw3qgmwuompfzuuuwto",
+                  "data": "2026-11-05",
+                  "valor": 917.42
+                }
+              ],
               "vencimento": "2026-10-04",
               "valorDevido": 917.4163636363636
             },
             {
               "id": "mork7oab3h0yq15sbb4",
               "descCaixa": "Gasto Mercado",
-              "pagamentos": [],
+              "pagamentos": [
+                {
+                  "id": "mw3qgs3je799t6amzm",
+                  "data": "2026-11-05",
+                  "valor": 270
+                }
+              ],
               "vencimento": "2026-11-04",
               "origemCaixa": true,
               "valorDevido": 1080
